@@ -19,9 +19,10 @@ Scientific contract (enforced, not documented-only):
   ``band_alignment``. When grids already match, nothing is resampled.
 - **Scaling**: HLS v2.0 DN -> surface reflectance is DN * 0.0001 (the
   documented HLS v2.0 scale factor; no per-band offsets exist).
-- **Fmask masking**: cirrus (bit 0), cloud (1), shadow (3) and snow/ice
-  (4) are excluded (FMASK_EXCLUDE_MASK). Adjacent-to-cloud and water bits
-  are recorded in provenance but NOT excluded.
+- **Fmask masking**: cloud (bit 1), adjacent-to-cloud/shadow (2), cloud
+  shadow (3) and snow/ice (4) are excluded. Bit 0 is reserved in HLS v2.0;
+  water (bit 5) and aerosol quality levels (bits 6-7) are recorded but not
+  hard-masked.
 - **Nodata**: masked pixels are NaN in every derived array and are NEVER
   treated as zero. Valid-pixel percentages are computed against the field
   mask, not the whole window.
@@ -513,14 +514,21 @@ def derive_index_products(
     if reading.fmask is not None:
         fm = reading.fmask.astype(np.uint8)
         cloud_mask = (fm & fmask_exclude_mask) != 0
+        aot_level = (fm >> 6) & 0b11
         fmask_bits_record = {
             "excluded_bits": fmask_exclude_mask,
-            "cloud_pixels_in_window": int(((fm & 0b10) != 0).sum()),
-            "shadow_pixels_in_window": int(((fm & 0b1000) != 0).sum()),
-            "cirrus_pixels_in_window": int(((fm & 0b1) != 0).sum()),
-            "snow_pixels_in_window": int(((fm & 0b10000) != 0).sum()),
-            "water_pixels_in_window": int(((fm & 0b100000) != 0).sum()),
-            "adjacent_to_cloud_pixels_in_window": int(((fm & 0b100) != 0).sum()),
+            "cloud_pixels_in_window": int(((fm & 0b00000010) != 0).sum()),
+            "adjacent_to_cloud_pixels_in_window": int(((fm & 0b00000100) != 0).sum()),
+            "shadow_pixels_in_window": int(((fm & 0b00001000) != 0).sum()),
+            "snow_pixels_in_window": int(((fm & 0b00010000) != 0).sum()),
+            "water_pixels_in_window": int(((fm & 0b00100000) != 0).sum()),
+            "reserved_bit0_pixels_in_window": int(((fm & 0b00000001) != 0).sum()),
+            "aot_level_counts": {
+                "climatology": int((aot_level == 0).sum()),
+                "medium": int((aot_level == 1).sum()),
+                "low": int((aot_level == 2).sum()),
+                "high": int((aot_level == 3).sum()),
+            },
         }
 
     index_arrays = compute_index_arrays(reflectances=reflectances, indices=indices)
