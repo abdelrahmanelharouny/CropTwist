@@ -55,6 +55,7 @@ FMASK_ADJACENT = 0b000100       # bit 2
 FMASK_SHADOW = 0b001000         # bit 3
 FMASK_SNOW = 0b010000           # bit 4
 FMASK_WATER = 0b100000          # bit 5 (recorded, NOT excluded)
+FMASK_AOT_HIGH = 0b11000000     # bits 6-7 == 11 (excluded)
 
 
 def write_fixture_scene(

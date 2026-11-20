@@ -52,8 +52,9 @@ KNOWN_LIMITATIONS = (
     "to-cloud/shadow, cloud-shadow and snow/ice pixels are masked via HLS "
     "Fmask; water is retained and separately counted because it can be "
     "agronomically relevant (e.g. flooded fields). Bit 0 is reserved in HLS "
-    "v2.0, not a cirrus class. Aerosol quality bits are recorded but are not "
-    "a hard exclusion until their effect is validated. Masking is imperfect "
+    "v2.0, not a cirrus class. High-AOT pixels are excluded because known "
+    "HLS v2 artifacts can produce unrealistically low reflectance near bright "
+    "targets; all AOT levels are recorded in provenance. Masking is imperfect "
     "and heavily clouded periods can leave long data gaps. "
     "HLS is an atmospheric-corrected ESTIMATE, not a ground measurement. "
     "HLS is a vegetation/land product: it does NOT provide parcel-level soil "
@@ -72,7 +73,9 @@ FMASK_BIT_WATER = 5
 FMASK_AOT_SHIFT = 6
 FMASK_AOT_MASK = 0b11000000
 # Exclude cloud, adjacent-to-cloud/shadow, cloud shadow and snow/ice.
-# Water and AOT levels are recorded separately, not hard-masked.
+# Water is retained and recorded. High AOT (bits 6-7 == 11) is separately
+# excluded because HLS v2 known issues link it to unrealistically low reflectance.
+FMASK_AOT_HIGH = 0b11000000
 FMASK_EXCLUDE_MASK = 0b00011110  # bits 1,2,3,4
 
 # Surface -> asset key per collection (HLS v2.0 asset naming).

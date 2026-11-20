@@ -15,8 +15,8 @@ NASA HLS v2.0 (Harmonized Landsat Sentinel-2, LP DAAC):
   (ProviderUnavailable) — never fabricated.
 - Processing: per-pixel vegetation indices via the shared, documented index
   math (`app.vegetation.raster_indices` / `app.vegetation.indices`), CRS-safe
-  field-window reads, HLS v2 Fmask cloud/adjacency/shadow/snow masking
-  (water and AOT levels recorded separately), and zonal field statistics.
+  field-window reads, HLS v2 Fmask cloud/adjacency/shadow/snow/high-AOT masking
+  (water and all AOT levels recorded separately), and zonal field statistics.
   HLS band scaling
   (DN * 0.0001) and band naming follow the HLS v2.0 user guide.
 - Ingestion flow: `scene_ids` + `scene_records` (from a discovery step) pin
@@ -57,6 +57,7 @@ from app.data_platform.providers.nasa_hls import catalog as hls_catalog
 from app.data_platform.providers.nasa_hls.registry_info import (
     ATTRIBUTION_TEXT,
     DOCUMENTATION_URL,
+    FMASK_AOT_HIGH,
     FMASK_AOT_MASK,
     FMASK_EXCLUDE_MASK,
     HLS_REFLECTANCE_SCALE,
@@ -548,6 +549,7 @@ def _scene_observations(
             "snow_pixels": int((((field_fmask & 0b00010000) != 0) & valid_qa).sum()),
             "water_pixels": int((((field_fmask & 0b00100000) != 0) & valid_qa).sum()),
             "reserved_bit0_pixels": int((((field_fmask & 0b00000001) != 0) & valid_qa).sum()),
+            "high_aerosol_pixels": int(((aot_level == 3) & valid_qa).sum()),
             "qa_nodata_pixels": int((~valid_qa).sum()),
             "aot_level_counts": {
                 "climatology": int(((aot_level == 0) & valid_qa).sum()),
@@ -561,12 +563,14 @@ def _scene_observations(
             surface: arr["data"] * HLS_REFLECTANCE_SCALE for surface, arr in band_arrays.items()
         }
         index_arrays = compute_index_arrays(reflectances=reflectances, indices=variables)
-        cloud_mask = (fmask.astype(np.uint8) & FMASK_EXCLUDE_MASK) != 0
+        fmask_uint8 = fmask.astype(np.uint8)
+        high_aerosol_mask = (fmask_uint8 & FMASK_AOT_MASK) == FMASK_AOT_HIGH
+        cloud_mask = ((fmask_uint8 & FMASK_EXCLUDE_MASK) != 0) | high_aerosol_mask
     except Exception as exc:  # noqa: BLE001 — network/raster failures degrade per scene
         raise ProviderUnavailable(
-            f"Scene {scene_id} could not be read ({type(exc).__name__}: {exc}); "
-            "NASA HLS assets require network access and Earthdata credentials.",
-            details=[{"scene_id": scene_id}],
+            f"Scene {scene_id} could not be read or validated ({type(exc).__name__}: {exc}); "
+            "verify Earthdata credentials, COG availability, CRS metadata and QA assets.",
+            details=[{"scene_id": scene_id, "reason": str(exc)}],
         ) from exc
 
     observations: list[CanonicalObservation] = []
@@ -620,7 +624,7 @@ def _scene_observations(
                     "message": (
                         f"Per-pixel {vcode.upper()} over field mask "
                         f"({stats.valid_pixels} valid pixels, HLS v2 Fmask "
-                        "cloud/adjacency/shadow/snow masked; water retained)."
+                        "cloud/adjacency/shadow/snow/high-AOT masked; water retained)."
                     ),
                 }
             ]

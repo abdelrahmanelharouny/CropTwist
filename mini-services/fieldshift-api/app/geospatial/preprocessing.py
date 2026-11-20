@@ -21,8 +21,9 @@ Scientific contract (enforced, not documented-only):
   documented HLS v2.0 scale factor; no per-band offsets exist).
 - **Fmask masking**: cloud (bit 1), adjacent-to-cloud/shadow (2), cloud
   shadow (3) and snow/ice (4) are excluded. Bit 0 is reserved in HLS v2.0;
-  water (bit 5) and aerosol quality levels (bits 6-7) are recorded but not
-  hard-masked.
+  water (bit 5) and aerosol quality levels (bits 6-7) are recorded; high-AOT
+  pixels (11) are excluded because HLS v2 known issues link them to
+  unrealistically low reflectance near bright targets.
 - **Nodata**: masked pixels are NaN in every derived array and are NEVER
   treated as zero. Valid-pixel percentages are computed against the field
   mask, not the whole window.
@@ -513,9 +514,10 @@ def derive_index_products(
     fmask_bits_record: dict[str, int] | None = None
     if reading.fmask is not None:
         fm = reading.fmask.astype(np.uint8)
-        cloud_mask = (fm & fmask_exclude_mask) != 0
         valid_qa = fm != 255
         aot_level = (fm >> 6) & 0b11
+        high_aerosol_mask = (fm & 0b11000000) == 0b11000000
+        cloud_mask = ((fm & fmask_exclude_mask) != 0) | high_aerosol_mask
         fmask_bits_record = {
             "excluded_bits": fmask_exclude_mask,
             "cloud_pixels_in_window": int((((fm & 0b00000010) != 0) & valid_qa).sum()),
@@ -524,6 +526,7 @@ def derive_index_products(
             "snow_pixels_in_window": int((((fm & 0b00010000) != 0) & valid_qa).sum()),
             "water_pixels_in_window": int((((fm & 0b00100000) != 0) & valid_qa).sum()),
             "reserved_bit0_pixels_in_window": int((((fm & 0b00000001) != 0) & valid_qa).sum()),
+            "high_aerosol_pixels_in_window": int(((aot_level == 3) & valid_qa).sum()),
             "qa_nodata_pixels_in_window": int((~valid_qa).sum()),
             "aot_level_counts": {
                 "climatology": int(((aot_level == 0) & valid_qa).sum()),

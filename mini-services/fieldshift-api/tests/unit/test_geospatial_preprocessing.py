@@ -21,6 +21,7 @@ from tests.fixtures.raster_fixtures import (
     EXPECTED_STRESSED,
     EXPECTED_VEGETATED,
     FIXTURE_CRS,
+    FMASK_AOT_HIGH,
     FMASK_RESERVED_BIT0,
     FMASK_WATER,
     fixture_field_geojson,
@@ -308,6 +309,27 @@ class TestFmaskMasking:
         # Water and reserved bit 0 remain valid; neither is an exclusion bit.
         p = products[0]
         assert p.valid_pixels == p.masked_pixels
+
+
+    def test_high_aerosol_pixels_are_excluded_and_counted(self, tmp_path):
+        assets = write_fixture_scene(tmp_path, scene_id="FIX.AOT")
+        with rasterio.open(assets["fmask"], "r+") as src:
+            fm = src.read(1)
+            fm[10, 10] = FMASK_AOT_HIGH
+            src.write(fm, 1)
+        geo = fixture_field_geojson()
+        reading = _read(assets, geo)
+        products, provenance = pre.derive_index_products(
+            reading=reading,
+            geometry_geojson=geo,
+            indices=["ndvi"],
+            reflectance_scale=0.0001,
+            fmask_exclude_mask=0b00011110,
+        )
+        product = products[0]
+        assert product.valid_pixels == product.masked_pixels - 1
+        assert provenance["fmask"]["high_aerosol_pixels_in_window"] == 1
+        assert provenance["fmask"]["aot_level_counts"]["high"] == 1
 
 
 class TestValidPixelAccounting:
