@@ -142,6 +142,59 @@ class TestWindowedReading:
         assert np.nanmean(reading.arrays["red"]) == pytest.approx(1000.0)
         assert np.count_nonzero(reading.fmask == 2) >= 4
 
+    def test_southern_hemisphere_hls_negative_northing_is_not_reinterpreted(self, tmp_path):
+        """HLS S30 may label southern tiles with a north-UTM EPSG and negative Y."""
+        from pyproj import Transformer
+        from rasterio.transform import from_origin
+
+        crs = "EPSG:32636"
+        transform = from_origin(199000, -2700000, 30, 30)
+        assets = {}
+        for surface, value in (("red", 1200), ("nir", 4200)):
+            path = tmp_path / f"south_{surface}.tif"
+            with rasterio.open(
+                path, "w", driver="GTiff", height=40, width=40, count=1,
+                dtype="float32", crs=crs, transform=transform, nodata=-9999,
+            ) as dst:
+                dst.write(np.full((40, 40), value, dtype="float32"), 1)
+            assets[surface] = str(path)
+        fmask_path = tmp_path / "south_fmask.tif"
+        with rasterio.open(
+            fmask_path, "w", driver="GTiff", height=40, width=40, count=1,
+            dtype="uint8", crs=crs, transform=transform, nodata=255,
+        ) as dst:
+            dst.write(np.zeros((40, 40), dtype="uint8"), 1)
+        assets["fmask"] = str(fmask_path)
+
+        to_wgs84 = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+        corners = [
+            to_wgs84.transform(199150, -2700150),
+            to_wgs84.transform(200050, -2700150),
+            to_wgs84.transform(200050, -2701050),
+            to_wgs84.transform(199150, -2701050),
+            to_wgs84.transform(199150, -2700150),
+        ]
+        geometry = {"type": "Polygon", "coordinates": [[list(point) for point in corners]]}
+        reading = pre.read_scene_window(
+            assets=assets,
+            surfaces=("red", "nir"),
+            geometry_geojson=geometry,
+            gdal_env={},
+            max_window_mb=64,
+            nodata_fallbacks={"red": -9999, "nir": -9999, "fmask": 255},
+        )
+        field_mask = pre.field_mask_for_window(
+            geometry_geojson=geometry,
+            crs_string=reading.crs,
+            transform=reading.transform,
+            width=reading.width,
+            height=reading.height,
+        )
+        assert reading.crs == crs
+        assert reading.window_bounds[1] < 0
+        assert field_mask.any()
+        assert field_mask.sum() == reading.width * reading.height
+
 class TestIndexFormulas:
     def test_top_half_matches_documented_formula(self, clean_scene):
         geo = fixture_field_geojson()
