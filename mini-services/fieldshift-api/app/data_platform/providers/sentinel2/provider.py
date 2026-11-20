@@ -100,6 +100,16 @@ def _is_cdse_asset_url(url: str) -> bool:
     return bool(host and (host == "dataspace.copernicus.eu" or host.endswith(".dataspace.copernicus.eu")))
 
 
+def _rasterio_asset_href(href: str) -> str:
+    """Translate CDSE S3 URIs to GDAL's /vsis3/ virtual filesystem path."""
+    parsed = urlsplit(str(href))
+    if parsed.scheme.lower() != "s3":
+        return str(href)
+    if parsed.netloc.lower() != "eodata" or not parsed.path or parsed.query or parsed.fragment:
+        raise ValueError("unsupported or malformed CDSE S3 asset URI")
+    return f"/vsis3/{parsed.netloc}{parsed.path}"
+
+
 def _safe_asset_href_for_metadata(href: str | None) -> str | None:
     """Drop credentials, query signatures and fragments before persistence."""
     if not href:
@@ -429,7 +439,10 @@ def _load_scene_arrays(
     scl_href = _scl_asset_href(item)
     if not scl_href:
         raise ValueError("Sentinel-2 scene has no SCL quality asset")
-    assets = {**hrefs, "fmask": scl_href}
+    assets = {
+        **{surface: _rasterio_asset_href(href) for surface, href in hrefs.items()},
+        "fmask": _rasterio_asset_href(scl_href),
+    }
     return pre.read_scene_window(
         assets=assets,
         surfaces=tuple(
@@ -459,7 +472,7 @@ def _radiometry_for_scene(
 ) -> dict[str, dict[str, Any]]:
     """Resolve per-band scale/offset from STAC, GeoTIFF tags, then baseline."""
     properties = item.get("properties") or {}
-    raw_baseline = properties.get("s2:processing_baseline")
+    raw_baseline = properties.get("processing:version") or properties.get("s2:processing_baseline")
     baseline_offset: float | None = None
     if raw_baseline is not None:
         match = re.match(r"^\s*(\d+(?:\.\d+)?)", str(raw_baseline))
@@ -512,18 +525,58 @@ def _gdal_env_options(
     headers: dict[str, str] | None,
     asset_hrefs: list[str | None] | None = None,
 ) -> dict[str, str]:
-    """Pass CDSE bearer auth only to verified HTTPS CDSE asset hosts.
+    """Build bounded GDAL options for CDSE S3 or trusted HTTPS assets.
 
-    A STAC item can point at a third-party signed URL. GDAL_HTTP_HEADERS is
-    process-wide for the raster read and must not forward a CDSE bearer token
-    to arbitrary asset hosts.
+    The current CDSE STAC API publishes s3://eodata asset URIs. Those require
+    separate CDSE-generated S3 keys; the account password/OIDC bearer token is
+    not an S3 credential. Third-party signed HTTPS assets never receive CDSE
+    credentials through GDAL_HTTP_HEADERS.
     """
-    if not headers or not asset_hrefs:
-        return {}
-    if not all(href and _is_cdse_asset_url(href) for href in asset_hrefs):
-        return {}
-    header_lines = [f"{key}: {value}" for key, value in headers.items()]
-    return {"GDAL_HTTP_HEADERS": "\r\n".join(header_lines) + "\r\n"}
+    env = {
+        "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+        "VSI_CACHE": "TRUE",
+        "GDAL_HTTP_TIMEOUT": str(int(settings.sentinel2_timeout_seconds)),
+    }
+    if not asset_hrefs:
+        return env
+
+    parsed = [urlsplit(str(href)) for href in asset_hrefs if href]
+    if len(parsed) != len(asset_hrefs):
+        return env
+
+    if any(item.scheme.lower() == "s3" for item in parsed):
+        if not all(item.scheme.lower() == "s3" and item.netloc.lower() == "eodata" and item.path for item in parsed):
+            raise ProviderUnavailable(
+                "Sentinel-2 STAC returned an unsupported S3 asset location.",
+                details=[{"reason": "unsupported_s3_asset_host"}],
+            )
+        access_key = settings.cdse_s3_access_key
+        secret_key = settings.cdse_s3_secret_key
+        if not access_key or not secret_key:
+            raise ProviderUnavailable(
+                "CDSE S3 credentials are required to read Sentinel-2 assets. "
+                "Generate S3 keys in your Copernicus Data Space account and "
+                "configure CROPTWIST_CDSE_S3_ACCESS_KEY and CROPTWIST_CDSE_S3_SECRET_KEY.",
+                details=[{"reason": "cdse_s3_credentials_missing"}],
+            )
+        env.update(
+            {
+                "AWS_ACCESS_KEY_ID": access_key,
+                "AWS_SECRET_ACCESS_KEY": secret_key,
+                "AWS_S3_ENDPOINT": "eodata.dataspace.copernicus.eu",
+                "AWS_VIRTUAL_HOSTING": "FALSE",
+                "AWS_HTTPS": "YES",
+            }
+        )
+        return env
+
+    if headers and all(
+        item.scheme.lower() == "https" and _is_cdse_asset_url(item.geturl())
+        for item in parsed
+    ):
+        header_lines = [f"{key}: {value}" for key, value in headers.items()]
+        env["GDAL_HTTP_HEADERS"] = "\r\n".join(header_lines) + "\r\n"
+    return env
 
 
 def _observations_from_item(
@@ -560,7 +613,7 @@ def _observations_from_item(
 
     properties = item.get("properties") or {}
     platform = properties.get("platform") or "Sentinel-2"
-    processing_baseline = properties.get("s2:processing_baseline")
+    processing_baseline = properties.get("processing:version") or properties.get("s2:processing_baseline")
     metadata_common: dict[str, Any] = {
         "scene_id": scene_id,
         "granule_id": scene_id,
@@ -578,11 +631,11 @@ def _observations_from_item(
     }
 
     try:
-        safe_gdal_env = (
-            _gdal_env_options(gdal_auth_headers, [*hrefs.values(), scl_href])
-            if gdal_auth_headers
-            else (gdal_env or {})
+        safe_gdal_env = _gdal_env_options(
+            gdal_auth_headers or {}, [*hrefs.values(), scl_href]
         )
+        if gdal_env:
+            safe_gdal_env.update(gdal_env)
         reading = _load_scene_arrays(item, hrefs, geometry_geojson, safe_gdal_env)
         scl = reading.fmask
         shape = (reading.height, reading.width)
