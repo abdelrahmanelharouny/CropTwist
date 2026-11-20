@@ -150,7 +150,7 @@ class TestIndexFormulas:
             geometry_geojson=geo,
             indices=["ndvi", "evi", "savi", "ndmi", "ndwi", "bsi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         mask = pre.field_mask_for_window(
             geometry_geojson=geo,
@@ -175,7 +175,7 @@ class TestIndexFormulas:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         assert prov["reflectance_scale"] == 0.0001
         ndvi = products[0]
@@ -199,7 +199,7 @@ class TestFmaskMasking:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         p = products[0]
         # The 42-pixel cloud block and 24-pixel nodata patch are both invalid,
@@ -208,8 +208,9 @@ class TestFmaskMasking:
         assert (p.masked_pixels - p.valid_pixels) == 66
         fm = prov["fmask"]
         assert fm["cloud_pixels_in_window"] == 42
-        assert fm["shadow_pixels_in_window"] == 42  # cloud block also carries shadow+cirrus
-        assert fm["cirrus_pixels_in_window"] == 42
+        assert fm["shadow_pixels_in_window"] == 42
+        assert fm["adjacent_to_cloud_pixels_in_window"] == 42
+        assert fm["reserved_bit0_pixels_in_window"] == 0
 
     def test_nodata_never_treated_as_zero(self, cloud_scene):
         geo = fixture_field_geojson()
@@ -220,7 +221,7 @@ class TestFmaskMasking:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         p = products[0]
         arr = p.array
@@ -231,12 +232,13 @@ class TestFmaskMasking:
     def test_water_bit_recorded_not_excluded(self, tmp_path):
         """FMASK bit 5 (water) is recorded in provenance but NOT excluded."""
         assets = write_fixture_scene(tmp_path, scene_id="FIX.W1")
-        # set one pixel to water-only
+        # set one pixel to water-only and one to reserved bit 0
         import rasterio
 
         with rasterio.open(assets["fmask"], "r+") as src:
             fm = src.read(1)
             fm[10, 10] = FMASK_WATER
+            fm[11, 11] = FMASK_RESERVED_BIT0
             src.write(fm, 1)
         geo = fixture_field_geojson()
         reading = _read(assets, geo)
@@ -245,14 +247,13 @@ class TestFmaskMasking:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         assert prov["fmask"]["water_pixels_in_window"] == 1
-        # water pixel remains valid (water bit not in exclude mask)
+        assert prov["fmask"]["reserved_bit0_pixels_in_window"] == 1
+        # Water and reserved bit 0 remain valid; neither is an exclusion bit.
         p = products[0]
-        assert p.valid_pixels == p.masked_pixels - int(
-            (reading.fmask & 0b011011 != 0).sum()
-        )
+        assert p.valid_pixels == p.masked_pixels
 
 
 class TestValidPixelAccounting:
@@ -264,7 +265,7 @@ class TestValidPixelAccounting:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         p = products[0]
         assert p.valid_pixel_fraction == pytest.approx(p.valid_pixels / p.masked_pixels)
@@ -284,7 +285,7 @@ class TestValidPixelAccounting:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         p = products[0]
         assert p.valid_pixels == 0
@@ -301,7 +302,7 @@ class TestZones:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         zones = products[0].zone_summary
         assert zones["method"] == "value_terciles_rank"
@@ -331,7 +332,7 @@ class TestZones:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         assert products[0].zone_summary is None
 
@@ -345,7 +346,7 @@ class TestCogWriting:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         arr = products[0].array
         out = str(tmp_path / "ndvi.tif")
@@ -371,7 +372,7 @@ class TestPreviewPng:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         png = pre.render_preview_png(index_array=products[0].array, index_code="ndvi")
         assert png.startswith(b"\x89PNG\r\n\x1a\n")
@@ -385,7 +386,7 @@ class TestPreviewPng:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         arr = products[0].array
         png1 = pre.render_preview_png(index_array=arr, index_code="ndvi")
@@ -461,7 +462,7 @@ class TestProvenanceBlock:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         block = pre.product_provenance(
             product_code="HLSL30",
