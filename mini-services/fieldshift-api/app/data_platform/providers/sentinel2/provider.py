@@ -68,7 +68,7 @@ logger = logging.getLogger("croptwist.providers.sentinel2")
 PROVIDER_CODE = "sentinel2"
 PROVIDER_NAME = "Copernicus Sentinel-2 L2A (STAC)"
 PRODUCT_CODE = "sentinel-2-l2a"
-PRODUCT_VERSION = "stac-1.0"
+PRODUCT_VERSION = "stac-1.1.0"
 STAC_SEARCH_PATH = "/search"
 
 DEFAULT_COLLECTION = "sentinel-2-l2a"
