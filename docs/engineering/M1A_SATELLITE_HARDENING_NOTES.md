@@ -6,7 +6,7 @@
 ## Provider and raster correctness
 
 - Sentinel-2 defaults to the current CDSE STAC API v1 endpoint: `https://stac.dataspace.copernicus.eu/v1`. The former `https://catalogue.dataspace.copernicus.eu/stac` endpoint was marked deprecated by CDSE effective 2025-11-17.
-- Current CDSE item assets are S3 URIs (`s3://eodata/...`), not generic HTTPS COG URLs. GDAL reads them via `/vsis3/` and `AWS_S3_ENDPOINT=eodata.dataspace.copernicus.eu`, `AWS_VIRTUAL_HOSTING=FALSE`, and CDSE-generated S3 credentials.
+- Current CDSE item assets are S3 URIs (`s3://eodata/...`), not generic HTTPS COG URLs. GDAL reads them via `/vsis3/` and `AWS_S3_ENDPOINT=eodata.dataspace.copernicus.eu`, `AWS_DEFAULT_REGION=default`, `AWS_VIRTUAL_HOSTING=FALSE`, and CDSE-generated S3 credentials.
 - Sentinel-2 processing baseline resolution prefers the current `processing:version` property and falls back to legacy `s2:processing_baseline`.
 - The STAC collection remains `sentinel-2-l2a`; the provider uses the `/search` endpoint and the STAC query extension for cloud-cover filtering.
 - Mixed-resolution Sentinel-2 reflectance bands are aligned geospatially to the red 10 m grid; categorical SCL uses nearest-neighbour resampling. Index metadata reports the coarsest effective input resolution.
