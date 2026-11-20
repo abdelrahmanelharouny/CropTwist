@@ -514,20 +514,22 @@ def derive_index_products(
     if reading.fmask is not None:
         fm = reading.fmask.astype(np.uint8)
         cloud_mask = (fm & fmask_exclude_mask) != 0
+        valid_qa = fm != 255
         aot_level = (fm >> 6) & 0b11
         fmask_bits_record = {
             "excluded_bits": fmask_exclude_mask,
-            "cloud_pixels_in_window": int(((fm & 0b00000010) != 0).sum()),
-            "adjacent_to_cloud_pixels_in_window": int(((fm & 0b00000100) != 0).sum()),
-            "shadow_pixels_in_window": int(((fm & 0b00001000) != 0).sum()),
-            "snow_pixels_in_window": int(((fm & 0b00010000) != 0).sum()),
-            "water_pixels_in_window": int(((fm & 0b00100000) != 0).sum()),
-            "reserved_bit0_pixels_in_window": int(((fm & 0b00000001) != 0).sum()),
+            "cloud_pixels_in_window": int((((fm & 0b00000010) != 0) & valid_qa).sum()),
+            "adjacent_to_cloud_pixels_in_window": int((((fm & 0b00000100) != 0) & valid_qa).sum()),
+            "shadow_pixels_in_window": int((((fm & 0b00001000) != 0) & valid_qa).sum()),
+            "snow_pixels_in_window": int((((fm & 0b00010000) != 0) & valid_qa).sum()),
+            "water_pixels_in_window": int((((fm & 0b00100000) != 0) & valid_qa).sum()),
+            "reserved_bit0_pixels_in_window": int((((fm & 0b00000001) != 0) & valid_qa).sum()),
+            "qa_nodata_pixels_in_window": int((~valid_qa).sum()),
             "aot_level_counts": {
-                "climatology": int((aot_level == 0).sum()),
-                "medium": int((aot_level == 1).sum()),
-                "low": int((aot_level == 2).sum()),
-                "high": int((aot_level == 3).sum()),
+                "climatology": int(((aot_level == 0) & valid_qa).sum()),
+                "medium": int(((aot_level == 1) & valid_qa).sum()),
+                "low": int(((aot_level == 2) & valid_qa).sum()),
+                "high": int(((aot_level == 3) & valid_qa).sum()),
             },
         }
 
