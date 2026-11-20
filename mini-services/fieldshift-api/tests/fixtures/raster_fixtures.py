@@ -49,11 +49,12 @@ EXPECTED_STRESSED = {
     "bsi": ((0.35 + 0.30) - (0.25 + 0.10)) / ((0.35 + 0.30) + (0.25 + 0.10)),
 }
 
-FMASK_CLOUD = 0b000010   # bit 1
-FMASK_SHADOW = 0b001000  # bit 3
-FMASK_CIRRUS = 0b000001  # bit 0
-FMASK_SNOW = 0b010000    # bit 4
-FMASK_WATER = 0b100000   # bit 5 (recorded, NOT excluded)
+FMASK_RESERVED_BIT0 = 0b000001  # bit 0 is reserved in HLS v2.0
+FMASK_CLOUD = 0b000010          # bit 1
+FMASK_ADJACENT = 0b000100       # bit 2
+FMASK_SHADOW = 0b001000         # bit 3
+FMASK_SNOW = 0b010000           # bit 4
+FMASK_WATER = 0b100000          # bit 5 (recorded, NOT excluded)
 
 
 def write_fixture_scene(
@@ -105,7 +106,7 @@ def write_fixture_scene(
 
     fmask = np.zeros((height, width), dtype="uint8")
     if with_cloud_block:
-        fmask[4:12, 4:12] = FMASK_CLOUD | FMASK_CIRRUS | FMASK_SHADOW
+        fmask[4:12, 4:12] = FMASK_CLOUD | FMASK_ADJACENT | FMASK_SHADOW
     # The nodata patch intentionally remains Fmask-clear so nodata tests can
     # distinguish source-band validity from cloud masking.
     fmask_path = str(directory / f"{scene_id}.fmask.tif")
