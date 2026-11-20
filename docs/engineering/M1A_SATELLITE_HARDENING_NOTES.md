@@ -6,6 +6,8 @@
 ## Provider and raster correctness
 
 - Sentinel-2 defaults to the current CDSE STAC API v1 endpoint: `https://stac.dataspace.copernicus.eu/v1`. The former `https://catalogue.dataspace.copernicus.eu/stac` endpoint was marked deprecated by CDSE effective 2025-11-17.
+- Current CDSE item assets are S3 URIs (`s3://eodata/...`), not generic HTTPS COG URLs. GDAL reads them via `/vsis3/` and `AWS_S3_ENDPOINT=eodata.dataspace.copernicus.eu`, `AWS_VIRTUAL_HOSTING=FALSE`, and CDSE-generated S3 credentials.
+- Sentinel-2 processing baseline resolution prefers the current `processing:version` property and falls back to legacy `s2:processing_baseline`.
 - The STAC collection remains `sentinel-2-l2a`; the provider uses the `/search` endpoint and the STAC query extension for cloud-cover filtering.
 - Mixed-resolution Sentinel-2 reflectance bands are aligned geospatially to the red 10 m grid; categorical SCL uses nearest-neighbour resampling. Index metadata reports the coarsest effective input resolution.
 - Sentinel-2 reflectance conversion resolves per-band STAC/GeoTIFF scale-offset metadata first, then the processing-baseline rule. Missing offset and baseline metadata fail closed.
@@ -21,13 +23,14 @@
 
 ## Verification contract
 
-The deterministic tests cover mixed-resolution alignment, SCL/Fmask masks, HLS Fmask propagation, southern-hemisphere geometry, Sentinel-2 baseline offsets, missing QA rejection, CDSE auth-host scoping and signed-URL metadata redaction.
+The deterministic tests cover mixed-resolution alignment, SCL/Fmask masks, HLS Fmask propagation, southern-hemisphere geometry, Sentinel-2 `processing:version`/legacy baseline offsets, CDSE S3 URI translation and credential configuration, missing QA rejection, CDSE auth-host scoping and signed-URL metadata redaction.
 
 CI must pass on the exact final branch head. These tests use synthetic GeoTIFF fixtures and mocked STAC/HTTP transports. They do **not** establish live CDSE connectivity, live Earthdata access, provider account entitlements, or correctness on production imagery. Those require a credentialed, explicitly authorized live smoke test after deployment configuration is reviewed.
 
 ## Primary provider references
 
 - CDSE STAC API: https://documentation.dataspace.copernicus.eu/APIs/STAC.html
+- CDSE S3 object storage: https://documentation.dataspace.copernicus.eu/APIs/S3.html
 - CDSE OData authentication: https://documentation.dataspace.copernicus.eu/APIs/OData.html
 - HLS v2 algorithms and QA: https://hls.gsfc.nasa.gov/algorithms/
 - HLS v2 known issues: https://lpdaac.usgs.gov/documents/2435/HLS_v2.0_S30_known_issues_April2026.pdf
