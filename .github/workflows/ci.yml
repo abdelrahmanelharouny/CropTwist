@@ -19,6 +19,12 @@ on:
   push:
   pull_request:
 
+# Push and pull_request events for the same head share one run group.
+# New commits supersede older runs instead of consuming duplicate PostGIS jobs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: backend (pytest + alembic + E2E on PostGIS 16-3.5)
