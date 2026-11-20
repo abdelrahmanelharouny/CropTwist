@@ -142,7 +142,8 @@ class Settings(BaseSettings):
     # P2.A — Sentinel-2 via STAC (Copernicus Data Space Ecosystem).
     # Credentials are optional: without them, anonymous STAC search is tried
     # and protected asset reads fail loudly (never fabricated).
-    sentinel2_stac_base_url: str = "https://catalogue.dataspace.copernicus.eu/stac"
+    # CDSE deprecated the legacy /stac endpoint on 2025-11-17; use STAC API v1.
+    sentinel2_stac_base_url: str = "https://stac.dataspace.copernicus.eu/v1"
     sentinel2_timeout_seconds: float = 30.0
     sentinel2_default_max_cloud_cover: float = 80.0
     cdse_username: str = ""
