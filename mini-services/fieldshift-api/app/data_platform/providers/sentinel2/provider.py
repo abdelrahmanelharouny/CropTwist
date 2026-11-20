@@ -16,15 +16,17 @@ Sentinel-2 L2A (surface reflectance) products:
 Processing pipeline per scene (when network access exists):
 1. STAC search: bbox of field geometry, datetime range, collection
    `sentinel-2-l2a`, cloud-cover filter (`options.max_cloud_cover`, default 80).
-2. Band COGs are opened via rasterio /vsicurl/ HTTP range reads; the field
-   geometry is rasterized to a pixel mask.
-3. Per-pixel indices are computed vectorized
-   (`app.vegetation.raster_indices` — index first, statistics second; the
-   scientifically correct order), cloud/shadow pixels (SCL classes) are
-   excluded, and `app.vegetation.zonal` produces field statistics
-   (mean/median/percentiles/valid-pixel counts).
-4. Every observation records scene id, platform, cloud %, processing
-   baseline, resolution and asset hrefs in metadata (Data Passport).
+2. The shared geospatial reader opens field-sized COG windows, reprojects the
+   field geometry into the red-band CRS, aligns 20 m SWIR/SCL onto the 10 m
+   red reference grid (bilinear reflectance, nearest-neighbour SCL), and
+   records the effective native resolution for each requested index.
+3. Reflectance conversion uses STAC/GeoTIFF scale-offset metadata first, then
+   the Sentinel-2 processing baseline (PB >= 04.00 uses the -0.1 reflectance
+   offset). SCL cloud/shadow/snow/unclassified classes are excluded before
+   zonal statistics.
+4. CDSE OAuth headers are passed to GDAL COG reads without being persisted;
+   every observation records radiometry, alignment, SCL policy, window,
+   resolution and asset hrefs in its Data Passport.
 
 Honesty properties:
 - No scene is ever fabricated when the network is unreachable — failures
