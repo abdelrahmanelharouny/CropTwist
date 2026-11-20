@@ -250,14 +250,23 @@ def _fake_raster_seam(monkeypatch, red, nir, blue=None, fmask=None, size=(12, 12
 
     transform = from_bounds(31.40, 31.10, 31.42, 31.12, size[1], size[0])
 
-    def fake_load(assets, surfaces, gdal_env):
+    def fake_load(assets, surfaces, gdal_env, geometry_geojson):
         arrays = {}
         for surface in surfaces:
             data = {"red": red, "nir": nir, "blue": blue if blue is not None else red}.get(surface)
             if data is None:
                 continue
             arrays[surface] = {"data": data.astype("float64"), "transform": transform}
-        return arrays, {"fmask": fmask, "shape": size, "transform": transform}
+        qa = fmask if fmask is not None else np.zeros(size, dtype="uint8")
+        return arrays, {
+            "fmask": qa,
+            "shape": size,
+            "transform": transform,
+            "crs": "EPSG:4326",
+            "band_alignment": {surface: "native" for surface in surfaces} | {"fmask": "native"},
+            "window_bounds": (31.40, 31.10, 31.42, 31.12),
+            "read_bytes_estimate": size[0] * size[1] * (len(surfaces) + 2) * 8,
+        }
 
     monkeypatch.setattr(hls_provider_module, "_load_scene_arrays", fake_load)
     return transform
@@ -403,7 +412,7 @@ def test_per_scene_degradation_degrades_only_that_scene(monkeypatch):
             "scene_id": good,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif"},
+            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
         },
         bad: {
             "scene_id": bad,
