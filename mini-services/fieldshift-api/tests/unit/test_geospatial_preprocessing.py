@@ -96,6 +96,51 @@ class TestWindowedReading:
             )
 
 
+    def test_mixed_resolution_reflectance_and_qa_align_to_reference_grid(self, tmp_path):
+        """20 m SWIR/SCL assets must be warped by coordinates, not pixel offsets."""
+        from rasterio.transform import from_origin
+
+        crs = "EPSG:32636"
+        red_path = tmp_path / "red_10m.tif"
+        swir_path = tmp_path / "swir_20m.tif"
+        qa_path = tmp_path / "qa_20m.tif"
+        with rasterio.open(
+            red_path, "w", driver="GTiff", height=100, width=110, count=1,
+            dtype="float32", crs=crs, transform=from_origin(500000, 3800000, 10, 10),
+            nodata=-9999,
+        ) as dst:
+            dst.write(np.full((100, 110), 1000, dtype="float32"), 1)
+        with rasterio.open(
+            swir_path, "w", driver="GTiff", height=50, width=55, count=1,
+            dtype="float32", crs=crs, transform=from_origin(500000, 3800000, 20, 20),
+            nodata=-9999,
+        ) as dst:
+            dst.write(np.full((50, 55), 2000, dtype="float32"), 1)
+        qa = np.zeros((50, 55), dtype="uint8")
+        qa[20, 20] = 2
+        with rasterio.open(
+            qa_path, "w", driver="GTiff", height=50, width=55, count=1,
+            dtype="uint8", crs=crs, transform=from_origin(500000, 3800000, 20, 20),
+            nodata=255,
+        ) as dst:
+            dst.write(qa, 1)
+
+        reading = pre.read_scene_window(
+            assets={"red": str(red_path), "swir1": str(swir_path), "fmask": str(qa_path)},
+            surfaces=("red", "swir1"),
+            geometry_geojson=fixture_field_geojson(),
+            gdal_env={},
+            max_window_mb=64,
+        )
+        assert reading.arrays["red"].shape == reading.arrays["swir1"].shape
+        assert reading.arrays["red"].shape == reading.fmask.shape
+        assert reading.band_alignment["red"] == "native"
+        assert reading.band_alignment["swir1"] == "reprojected"
+        assert reading.band_alignment["fmask"] == "reprojected"
+        assert np.nanmean(reading.arrays["swir1"]) == pytest.approx(2000.0)
+        assert np.nanmean(reading.arrays["red"]) == pytest.approx(1000.0)
+        assert np.count_nonzero(reading.fmask == 2) >= 4
+
 class TestIndexFormulas:
     def test_top_half_matches_documented_formula(self, clean_scene):
         geo = fixture_field_geojson()
