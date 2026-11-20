@@ -5,16 +5,19 @@ NASA HLS v2.0 (Harmonized Landsat Sentinel-2, LP DAAC):
 
 - Catalog: NASA CMR STAC (`cmr.earthdata.nasa.gov/stac/LPCLOUD`) — public,
   unauthenticated metadata search (see catalog.py).
-- Assets: LP DAAC cloud-optimized GeoTIFFs. Reads use rasterio /vsicurl/
-  HTTP range reads (no full-raster downloads, no binaries persisted) with
+- Assets: LP DAAC cloud-optimized GeoTIFFs. Reads use rasterio/GDAL HTTP
+  range reads for the field-sized window only (no full-raster downloads,
+  no binaries persisted) with
   NASA Earthdata Login credentials from settings
   (`CROPTWIST_EARTHDATA_USERNAME` / `CROPTWIST_EARTHDATA_PASSWORD` or a
   pre-minted `CROPTWIST_EARTHDATA_BEARER_TOKEN`). Credentials are never
   hardcoded. Without credentials, protected asset reads fail loudly
   (ProviderUnavailable) — never fabricated.
 - Processing: per-pixel vegetation indices via the shared, documented index
-  math (`app.vegetation.raster_indices` / `app.vegetation.indices`), Fmask
-  cloud/shadow/cirrus/snow masking, zonal field statistics. HLS band scaling
+  math (`app.vegetation.raster_indices` / `app.vegetation.indices`), CRS-safe
+  field-window reads, HLS v2 Fmask cloud/adjacency/shadow/snow masking
+  (water and AOT levels recorded separately), and zonal field statistics.
+  HLS band scaling
   (DN * 0.0001) and band naming follow the HLS v2.0 user guide.
 - Ingestion flow: `scene_ids` + `scene_records` (from a discovery step) pin
   the exact scenes to acquire — bounded, retryable, idempotent. Without
