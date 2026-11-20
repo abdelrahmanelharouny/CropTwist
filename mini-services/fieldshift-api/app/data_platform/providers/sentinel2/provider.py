@@ -566,6 +566,7 @@ def _gdal_env_options(
                 "AWS_ACCESS_KEY_ID": access_key,
                 "AWS_SECRET_ACCESS_KEY": secret_key,
                 "AWS_S3_ENDPOINT": "eodata.dataspace.copernicus.eu",
+                "AWS_DEFAULT_REGION": "default",
                 "AWS_VIRTUAL_HOSTING": "FALSE",
                 "AWS_HTTPS": "YES",
             }
