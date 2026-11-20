@@ -149,6 +149,9 @@ class Settings(BaseSettings):
     cdse_username: str = ""
     cdse_password: str = ""
     cdse_token_url: str = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+    # Separate S3 credentials generated in the CDSE account for s3://eodata assets.
+    cdse_s3_access_key: str = ""
+    cdse_s3_secret_key: str = ""
 
     # P2.B — Open-Meteo forecast API (free, no key; separate from archive).
     open_meteo_forecast_base_url: str = "https://api.open-meteo.com/v1/forecast"
