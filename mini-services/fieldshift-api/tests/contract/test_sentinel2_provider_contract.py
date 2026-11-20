@@ -9,6 +9,8 @@ import rasterio
 import pytest
 from rasterio.transform import from_origin
 
+from app.core.config import Settings
+
 from app.data_platform.providers.sentinel2.provider import (
     _gdal_env_options,
     _observations_from_item,
@@ -157,3 +159,9 @@ def test_gdal_auth_header_is_passed_only_to_rasterio_environment():
     assert _gdal_env_options({"Authorization": "Bearer token"}) == {
         "GDAL_HTTP_HEADERS": "Authorization: Bearer token\r\n"
     }
+
+
+def test_default_cdse_stac_endpoint_uses_supported_v1_api():
+    assert Settings.model_fields["sentinel2_stac_base_url"].default == (
+        "https://stac.dataspace.copernicus.eu/v1"
+    )
