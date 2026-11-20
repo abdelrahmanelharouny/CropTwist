@@ -505,7 +505,7 @@ class TestSceneValidation:
         assert not result.ok
         assert any("not_an_index" in r for r in result.reasons)
 
-    def test_missing_fmask_warns_not_rejects(self, clean_scene):
+    def test_missing_fmask_is_rejected(self, clean_scene):
         assets = {k: v for k, v in clean_scene.items() if k != "fmask"}
         result = pre.validate_scene_for_processing(
             scene_record={"scene_id": "S", "assets": assets, "acquired_at": "2026-01-01T00:00:00Z"},
@@ -513,8 +513,8 @@ class TestSceneValidation:
             indices=["ndvi"],
             processing_version="v1",
         )
-        assert result.ok
-        assert any("fmask" in w for w in result.warnings)
+        assert not result.ok
+        assert any("fmask" in reason.lower() for reason in result.reasons)
 
     def test_checksum_honesty_note(self):
         """Validation records that source checksums are NOT faked."""
@@ -556,3 +556,16 @@ class TestProvenanceBlock:
         assert block["pipeline"]["read_mode"] == "windowed_range_read"
         assert block["pipeline"]["window"]["crs"] == FIXTURE_CRS
         assert "checksum" in block["source_checksum_note"]
+
+
+def test_derived_hls_products_refuse_missing_fmask(clean_scene):
+    reading = _read(clean_scene, fixture_field_geojson())
+    reading.fmask = None
+    with pytest.raises(ValueError, match="Fmask QA is required"):
+        pre.derive_index_products(
+            reading=reading,
+            geometry_geojson=fixture_field_geojson(),
+            indices=["ndvi"],
+            reflectance_scale=0.0001,
+            fmask_exclude_mask=0b00011110,
+        )
