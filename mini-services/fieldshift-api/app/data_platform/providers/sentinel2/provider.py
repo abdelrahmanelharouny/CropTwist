@@ -516,14 +516,14 @@ def _gdal_env_options(
 
     A STAC item can point at a third-party signed URL. GDAL_HTTP_HEADERS is
     process-wide for the raster read and must not forward a CDSE bearer token
-    to arbitrary asset hosts or redirect targets.
+    to arbitrary asset hosts.
     """
     if not headers or not asset_hrefs:
         return {}
     if not all(href and _is_cdse_asset_url(href) for href in asset_hrefs):
         return {}
     header_lines = [f"{key}: {value}" for key, value in headers.items()]
-    return {"GDAL_HTTP_HEADERS": "\\r\\n".join(header_lines) + "\\r\\n"}
+    return {"GDAL_HTTP_HEADERS": "\r\n".join(header_lines) + "\r\n"}
 
 
 def _observations_from_item(
