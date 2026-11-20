@@ -137,7 +137,7 @@ def validate_scene_for_processing(
         if surface not in assets or not assets.get(surface):
             reasons.append(f"required band asset '{surface}' missing or empty")
     if "fmask" not in assets or not assets.get("fmask"):
-        warnings.append("fmask QA asset missing; cloud masking will be unavailable")
+        reasons.append("required Fmask QA asset missing; quality-masked HLS processing is not possible")
     if not scene_record.get("acquired_at"):
         reasons.append("acquisition time missing")
     version = scene_record.get("processing_version") or scene_record.get("product_version")
@@ -494,6 +494,9 @@ def derive_index_products(
     unknown = [i for i in indices if i not in _SUPPORTED_INDICES]
     if unknown:
         raise ValueError(f"unsupported index code(s): {', '.join(unknown)}")
+
+    if reading.fmask is None:
+        raise ValueError("Fmask QA is required for HLS-derived index products")
 
     height, width = reading.height, reading.width
     field_mask = field_mask_for_window(
