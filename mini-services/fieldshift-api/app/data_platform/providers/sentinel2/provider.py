@@ -3,47 +3,46 @@
 Implements the platform provider contract against STAC APIs that publish
 Sentinel-2 L2A (surface reflectance) products:
 
-- Primary target: Copernicus Data Space Ecosystem (CDSE). CDSE requires
-  OAuth2 (password grant) for asset downloads; credentials are read from
-  settings (`CROPTWIST_CDSE_USERNAME` / `CROPTWIST_CDSE_PASSWORD`) and are
-  NEVER hardcoded. Without credentials, search-only endpoints that permit
-  anonymous access still work; protected asset reads surface as
-  ProviderUnavailable — never fabricated data.
+- Primary target: the current Copernicus Data Space Ecosystem (CDSE) STAC v1
+  catalogue. Discovery is public. Current item assets use `s3://eodata/...`
+  URIs and require separate S3 access/secret keys generated in the CDSE
+  account; these are NOT the account username/password. Keys are read from
+  the secret-backed settings `CROPTWIST_CDSE_S3_ACCESS_KEY` and
+  `CROPTWIST_CDSE_S3_SECRET_KEY`, never hardcoded.
 - STAC-compatible alternates (e.g. Microsoft Planetary Computer) work by
-  pointing `CROPTWIST_SENTINEL2_STAC_BASE_URL` at their catalogue; asset
-  signing hooks (SAS) are left to deployment configuration.
+  pointing `CROPTWIST_SENTINEL2_STAC_BASE_URL` at their catalogue; their
+  signed asset URLs are used without forwarding CDSE credentials.
 
 Processing pipeline per scene (when network access exists):
 1. STAC search: bbox of field geometry, datetime range, collection
    `sentinel-2-l2a`, cloud-cover filter (`options.max_cloud_cover`, default 80).
-2. The shared geospatial reader opens field-sized COG windows, reprojects the
-   field geometry into the red-band CRS, aligns 20 m SWIR/SCL onto the 10 m
-   red reference grid (bilinear reflectance, nearest-neighbour SCL), and
-   records the effective native resolution for each requested index.
+2. The shared geospatial reader opens bounded GDAL VSI windows. CDSE S3 URIs
+   are mapped to `/vsis3/` and read through the official S3 endpoint; other
+   HTTPS assets are read through their native GDAL virtual filesystem.
+   Reflectance bands are aligned to the red reference grid (bilinear), while
+   categorical SCL is aligned with nearest-neighbour resampling.
 3. Reflectance conversion uses STAC/GeoTIFF scale-offset metadata first, then
-   the Sentinel-2 processing baseline (PB >= 04.00 uses the -0.1 reflectance
-   offset). SCL cloud/shadow/snow/unclassified classes are excluded before
-   zonal statistics.
-4. CDSE OAuth headers are passed to GDAL COG reads without being persisted;
-   every observation records radiometry, alignment, SCL policy, window,
-   resolution and asset hrefs in its Data Passport.
+   `processing:version` (or legacy `s2:processing_baseline`); PB >= 04.00
+   applies the -0.1 reflectance offset. SCL cloud/shadow/snow/unclassified
+   classes are excluded before zonal statistics.
+4. CDSE S3 keys are passed to GDAL only for `s3://eodata` assets. Signed
+   third-party URLs and credentials are not persisted in the Data Passport.
 
 Honesty properties:
 - No scene is ever fabricated when the network is unreachable — failures
   raise `ProviderUnavailable` and the ingestion job records them.
 - Sub-field spatial-variability claims below the zonal pixel threshold are
   flagged (`insufficient_pixels_for_variability`), never asserted.
-- Live availability in the current sandbox: BLOCKED (no external network,
-  no CDSE credentials). The adapter + contract tests run against mocked
-  HTTP and in-memory rasters; enabling live use needs connectivity +
-  credentials only.
+- Live availability in the current sandbox: BLOCKED (no external network and
+  no CDSE S3 keys). Contract tests use mocked STAC/HTTP and in-memory rasters;
+  live use still requires network access and separately generated S3 keys.
 """
 
 import logging
 import re
 from datetime import UTC, datetime
-from urllib.parse import urlsplit, urlunsplit
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -181,14 +180,17 @@ class Sentinel2StacProvider:
                 "L2A surface reflectance is an atmospheric estimate, not a "
                 "ground measurement."
             ),
-            retrieval_method="stac_api_cog_http_range",
+            retrieval_method="stac_api_gdal_vsi_windowed_read",
         )
 
     def _stac_base_url(self) -> str:
         return settings.sentinel2_stac_base_url.rstrip("/")
 
     def _auth_headers(self) -> dict[str, str]:
-        """CDSE OAuth2 password grant; retain the same token for COG reads."""
+        """Legacy CDSE OAuth path; current STAC v1 discovery is public."""
+        if _https_host(self._stac_base_url()) == "stac.dataspace.copernicus.eu":
+            self._last_auth_headers = {}
+            return {}
         username = settings.cdse_username
         password = settings.cdse_password
         stac_host = _https_host(self._stac_base_url())
