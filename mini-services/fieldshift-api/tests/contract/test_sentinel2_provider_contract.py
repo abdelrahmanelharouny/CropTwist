@@ -228,6 +228,7 @@ def test_cdse_s3_gdal_environment_uses_separate_s3_credentials(monkeypatch):
     assert env["AWS_ACCESS_KEY_ID"] == "test-access-key"
     assert env["AWS_SECRET_ACCESS_KEY"] == "test-secret-key"
     assert env["AWS_S3_ENDPOINT"] == "eodata.dataspace.copernicus.eu"
+    assert env["AWS_DEFAULT_REGION"] == "default"
     assert env["AWS_VIRTUAL_HOSTING"] == "FALSE"
     assert env["AWS_HTTPS"] == "YES"
     assert "GDAL_HTTP_HEADERS" not in env
