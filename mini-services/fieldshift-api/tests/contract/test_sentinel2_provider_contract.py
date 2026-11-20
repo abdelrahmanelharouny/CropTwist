@@ -162,13 +162,17 @@ def test_gdal_auth_header_is_scoped_to_cdse_asset_hosts():
     cdse_asset = "https://eodata.dataspace.copernicus.eu/path/band.tif"
     external_asset = "https://planetarycomputer.microsoft.com/path/band.tif?sig=secret"
 
-    assert _gdal_env_options({}) == {}
-    assert _gdal_env_options(headers) == {}
-    assert _gdal_env_options(headers, [cdse_asset]) == {
-        "GDAL_HTTP_HEADERS": "Authorization: Bearer token\r\n"
-    }
-    assert _gdal_env_options(headers, [external_asset]) == {}
-    assert _gdal_env_options(headers, [cdse_asset, external_asset]) == {}
+    base_env = _gdal_env_options({})
+    assert base_env["GDAL_DISABLE_READDIR_ON_OPEN"] == "EMPTY_DIR"
+    assert _gdal_env_options(headers).get("GDAL_HTTP_HEADERS") is None
+
+    cdse_env = _gdal_env_options(headers, [cdse_asset])
+    assert cdse_env["GDAL_HTTP_HEADERS"] == "Authorization: Bearer token\r\n"
+
+    external_env = _gdal_env_options(headers, [external_asset])
+    assert "GDAL_HTTP_HEADERS" not in external_env
+    mixed_env = _gdal_env_options(headers, [cdse_asset, external_asset])
+    assert "GDAL_HTTP_HEADERS" not in mixed_env
 
 
 def test_alternate_stac_provider_never_receives_cdse_credentials(monkeypatch):
