@@ -550,9 +550,9 @@ def _observations_from_item(
         raise
     except Exception as exc:  # noqa: BLE001 — network/raster failures degrade per scene
         raise ProviderUnavailable(
-            f"Scene {scene_id} could not be read ({exc}); satellite data requires "
-            "live network access to the provider.",
-            details=[{"scene_id": scene_id}],
+            f"Scene {scene_id} could not be read or validated ({exc}); verify "
+            "provider access, raster CRS, QA assets and radiometric metadata.",
+            details=[{"scene_id": scene_id, "reason": str(exc)}],
         ) from exc
 
     observations: list[CanonicalObservation] = []
@@ -611,8 +611,9 @@ def _observations_from_item(
                     "severity": "info",
                     "message": (
                         f"Per-pixel {vcode.upper()} over field mask "
-                        f"({stats.valid_pixels} valid pixels; SCL cloud/shadow/snow "
-                        f"mask applied; effective input resolution {effective_resolution:g} m)."
+                        f"({stats.valid_pixels} valid pixels; SCL cloud/shadow/"
+                        f"unclassified/cirrus/snow mask applied; effective input "
+                        f"resolution {effective_resolution:g} m)."
                     ),
                 }
             ]
