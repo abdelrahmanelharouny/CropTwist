@@ -12,8 +12,10 @@ from rasterio.transform import from_origin
 from app.core.config import Settings
 
 from app.data_platform.providers.sentinel2.provider import (
+    Sentinel2StacProvider,
     _gdal_env_options,
     _observations_from_item,
+    _safe_asset_href_for_metadata,
 )
 from tests.fixtures.raster_fixtures import fixture_field_geojson
 
@@ -154,14 +156,35 @@ def test_scene_without_scl_is_skipped_instead_of_claiming_cloud_masking(tmp_path
     assert any("SCL quality asset missing" in warning for warning in warnings)
 
 
-def test_gdal_auth_header_is_passed_only_to_rasterio_environment():
+def test_gdal_auth_header_is_scoped_to_cdse_asset_hosts():
+    headers = {"Authorization": "Bearer token"}
+    cdse_asset = "https://eodata.dataspace.copernicus.eu/path/band.tif"
+    external_asset = "https://planetarycomputer.microsoft.com/path/band.tif?sig=secret"
+
     assert _gdal_env_options({}) == {}
-    assert _gdal_env_options({"Authorization": "Bearer token"}) == {
+    assert _gdal_env_options(headers) == {}
+    assert _gdal_env_options(headers, [cdse_asset]) == {
         "GDAL_HTTP_HEADERS": "Authorization: Bearer token\r\n"
     }
+    assert _gdal_env_options(headers, [external_asset]) == {}
+    assert _gdal_env_options(headers, [cdse_asset, external_asset]) == {}
 
 
-def test_default_cdse_stac_endpoint_uses_supported_v1_api():
-    assert Settings.model_fields["sentinel2_stac_base_url"].default == (
-        "https://stac.dataspace.copernicus.eu/v1"
-    )
+def test_alternate_stac_provider_never_receives_cdse_credentials(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "sentinel2_stac_base_url", "https://planetarycomputer.microsoft.com/api/stac/v1")
+    monkeypatch.setattr(settings, "cdse_username", "user")
+    monkeypatch.setattr(settings, "cdse_password", "password")
+
+    class ForbiddenClient:
+        def post(self, *args, **kwargs):
+            raise AssertionError("CDSE credentials must not be requested for an alternate STAC host")
+
+    provider = Sentinel2StacProvider(client=ForbiddenClient())
+    assert provider._auth_headers() == {}
+
+
+def test_signed_asset_query_is_removed_before_metadata_persistence():
+    href = "https://example.com/band.tif?sig=secret&token=private#fragment"
+    assert _safe_asset_href_for_metadata(href) == "https://example.com/band.tif"
