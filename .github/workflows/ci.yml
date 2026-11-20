@@ -17,12 +17,13 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 # Push and pull_request events for the same head share one run group.
 # New commits supersede older runs instead of consuming duplicate PostGIS jobs.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
