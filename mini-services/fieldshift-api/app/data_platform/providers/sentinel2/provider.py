@@ -38,6 +38,7 @@ Honesty properties:
 """
 
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -74,10 +75,20 @@ SEARCH_TIMEOUT_SECONDS = 30.0
 
 SUPPORTED_VARIABLES = supported_indices()
 
-# Sentinel-2 Scene Classification Layer (SCL) values treated as unusable
-# pixels: 0 no-data, 1 saturated/defective, 3 cloud medium, 8 cloud high,
-# 9 cloud shadows/cirrus, 10 thin cirrus. (ESA SCL legend.)
-SCL_EXCLUDED_CLASSES = (0, 1, 3, 8, 9, 10)
+# Sentinel-2 SCL classes excluded from vegetation statistics:
+# 0 no-data, 1 saturated/defective, 3 cloud shadow, 7 unclassified,
+# 8 medium-probability cloud, 9 high-probability cloud, 10 cirrus,
+# 11 snow/ice, and 255 (reprojected no-data). Dark-area (2) and water (6)
+# are retained and can be useful signals for agricultural monitoring.
+SCL_EXCLUDED_CLASSES = (0, 1, 3, 7, 8, 9, 10, 11, 255)
+
+_SURFACE_TO_BAND = {
+    "blue": SENTINEL2_L2A.blue,
+    "green": SENTINEL2_L2A.green,
+    "red": SENTINEL2_L2A.red,
+    "nir": SENTINEL2_L2A.nir,
+    "swir1": SENTINEL2_L2A.swir1,
+}
 
 
 class Sentinel2StacProvider:
@@ -91,6 +102,7 @@ class Sentinel2StacProvider:
 
     def __init__(self, client: httpx.Client | None = None) -> None:
         self._client = client
+        self._last_auth_headers: dict[str, str] = {}
 
     # ------------------------------------------------------------- metadata
     def supported_variables(self) -> list[str]:
@@ -124,14 +136,11 @@ class Sentinel2StacProvider:
         return settings.sentinel2_stac_base_url.rstrip("/")
 
     def _auth_headers(self) -> dict[str, str]:
-        """CDSE OAuth2 password grant when credentials are configured.
-
-        Best-effort: on failure we continue anonymous (search may still work;
-        protected reads will fail loudly later — surfaced, never faked).
-        """
+        """CDSE OAuth2 password grant; retain the same token for COG reads."""
         username = settings.cdse_username
         password = settings.cdse_password
         if not username or not password:
+            self._last_auth_headers = {}
             return {}
         try:
             response = (self._client or httpx).post(
@@ -147,10 +156,13 @@ class Sentinel2StacProvider:
             response.raise_for_status()
             token = response.json().get("access_token")
             if token:
-                return {"Authorization": f"Bearer {token}"}
+                self._last_auth_headers = {"Authorization": f"Bearer {token}"}
+                return dict(self._last_auth_headers)
         except Exception as exc:  # noqa: BLE001
             logger.warning("CDSE authentication failed (%s); continuing anonymous", exc)
+        self._last_auth_headers = {}
         return {}
+
 
     # -------------------------------------------------------------- search
     def search_items(
@@ -231,6 +243,7 @@ class Sentinel2StacProvider:
             end=end.astimezone(UTC),
             max_cloud_cover=max_cloud,
         )
+        gdal_env = _gdal_env_options(self._last_auth_headers)
         if not items:
             return ProviderFetchResult(
                 provider_code=PROVIDER_CODE,
@@ -274,6 +287,7 @@ class Sentinel2StacProvider:
                 variables=sorted(set(variables)),
                 geometry_geojson=area_of_interest.geometry_geojson,
                 options=options,
+                gdal_env=gdal_env,
             )
             observations.extend(scene_obs)
             warnings.extend(scene_warnings)
@@ -340,32 +354,106 @@ def _assets_for_surfaces(item: dict[str, Any]) -> dict[str, str]:
     return hrefs
 
 
+def _scl_asset_href(item: dict[str, Any]) -> str | None:
+    assets = item.get("assets") or {}
+    for key, asset in assets.items():
+        if key.split("_")[0].lower() == "scl" and isinstance(asset, dict) and asset.get("href"):
+            return str(asset["href"])
+    return None
+
+
 def _load_scene_arrays(
     item: dict[str, Any],
     hrefs: dict[str, str],
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Read band COGs (or the injected in-memory test seam) into arrays.
+    geometry_geojson: dict[str, Any],
+    gdal_env: dict[str, str] | None = None,
+):
+    """Read a field window and align reflectance/SCL assets to the red 10 m grid."""
+    from app.geospatial import preprocessing as pre
 
-    Returns ({surface: {"data": 2D float DN array, "transform": Affine}},
-    {"scl": 2D int array | None, "shape": (h, w)}).
+    scl_href = _scl_asset_href(item)
+    if not scl_href:
+        raise ValueError("Sentinel-2 scene has no SCL quality asset")
+    assets = {**hrefs, "fmask": scl_href}
+    return pre.read_scene_window(
+        assets=assets,
+        surfaces=tuple(surface for surface in ("red", "nir", "blue", "green", "swir1") if hrefs.get(surface)),
+        geometry_geojson=geometry_geojson,
+        gdal_env=gdal_env or {},
+        max_window_mb=settings.raster_max_field_window_mb,
+        nodata_fallbacks={**{surface: 0 for surface in hrefs}, "fmask": 0},
+    )
 
-    Production path: /vsicurl/ HTTP range reads (rasterio). Test seam:
-    `options` carries pre-built rasterio MemoryFile datasets — implemented by
-    the caller passing them via `_scene_raster_seam`.
-    """
-    import rasterio
 
-    arrays: dict[str, Any] = {}
-    scl = None
-    for surface, href in hrefs.items():
-        with rasterio.open(f"/vsicurl/{href}") as src:
-            arrays[surface] = {"data": src.read(1).astype("float64"), "transform": src.transform}
-    scl_href = (item.get("assets") or {}).get("SCL") or (item.get("assets") or {}).get("scl")
-    if isinstance(scl_href, dict) and scl_href.get("href"):
-        with rasterio.open(f"/vsicurl/{scl_href['href']}") as src:
-            scl = src.read(1)
-    shape = arrays[next(iter(arrays))]["data"].shape
-    return arrays, {"scl": scl, "shape": shape}
+def _asset_for_band(item: dict[str, Any], band_name: str) -> dict[str, Any]:
+    assets = item.get("assets") or {}
+    for key, asset in assets.items():
+        if key.split("_")[0].upper() == band_name.upper() and isinstance(asset, dict):
+            return asset
+    return {}
+
+
+def _radiometry_for_scene(
+    item: dict[str, Any],
+    reading: Any,
+    hrefs: dict[str, str],
+) -> dict[str, dict[str, Any]]:
+    """Resolve per-band scale/offset from STAC, GeoTIFF tags, then baseline."""
+    properties = item.get("properties") or {}
+    raw_baseline = properties.get("s2:processing_baseline") or properties.get("processing:version")
+    baseline_offset: float | None = None
+    if raw_baseline is not None:
+        match = re.match(r"^\s*(\d+(?:\.\d+)?)", str(raw_baseline))
+        if match:
+            baseline_offset = -0.1 if float(match.group(1)) >= 4.0 else 0.0
+
+    radiometry: dict[str, dict[str, Any]] = {}
+    for surface in hrefs:
+        band_name = _SURFACE_TO_BAND[surface]
+        asset = _asset_for_band(item, band_name)
+        bands = asset.get("raster:bands") or asset.get("bands") or []
+        band_metadata = bands[0] if isinstance(bands, list) and bands else (
+            bands if isinstance(bands, dict) else {}
+        )
+        stac_scale = band_metadata.get("scale")
+        stac_offset = band_metadata.get("offset")
+        file_scale = reading.scale_values.get(surface, 1.0)
+        file_offset = reading.offset_values.get(surface, 0.0)
+
+        if stac_scale is not None:
+            scale, scale_source = float(stac_scale), "stac_raster_bands"
+        elif file_scale not in (None, 1.0):
+            scale, scale_source = float(file_scale), "geotiff_scale"
+        else:
+            scale, scale_source = SENTINEL2_L2A.scale, "sentinel2_default_scale"
+
+        if stac_offset is not None:
+            offset, offset_source = float(stac_offset), "stac_raster_bands"
+        elif file_offset not in (None, 0.0):
+            offset, offset_source = float(file_offset), "geotiff_offset"
+        elif baseline_offset is not None:
+            offset, offset_source = baseline_offset, "processing_baseline"
+        else:
+            raise ValueError(
+                f"band {band_name} has no offset metadata and the scene has no "
+                "Sentinel-2 processing baseline; refusing an unverified reflectance conversion"
+            )
+
+        radiometry[surface] = {
+            "band": band_name,
+            "scale": scale,
+            "offset": offset,
+            "scale_source": scale_source,
+            "offset_source": offset_source,
+        }
+    return radiometry
+
+
+def _gdal_env_options(headers: dict[str, str] | None) -> dict[str, str]:
+    """Translate HTTP auth headers into GDAL's per-request header option."""
+    if not headers:
+        return {}
+    return {"GDAL_HTTP_HEADERS": "\r\n".join(f"{key}: {value}" for key, value in headers.items()) + "\r\n"}
 
 
 def _observations_from_item(
@@ -377,17 +465,12 @@ def _observations_from_item(
     variables: list[str],
     geometry_geojson: dict[str, Any],
     options: dict[str, Any],
+    gdal_env: dict[str, str] | None = None,
 ) -> tuple[list[CanonicalObservation], list[str]]:
-    """Compute index observations for one scene via per-pixel indices + zonal stats.
-
-    A single unreadable asset degrades that scene only (warning), never the
-    whole job. A scene with no usable field pixels yields flagged-missing
-    observations for traceability.
-    """
+    """Compute indices on one CRS-correct, aligned, quality-masked field window."""
     import numpy as np
-    import rasterio
-    from rasterio.features import geometry_mask
 
+    from app.geospatial import preprocessing as pre
     from app.vegetation.raster_indices import compute_index_arrays
     from app.vegetation.zonal import ZonalResult, subfield_statistics_ok
 
@@ -399,10 +482,14 @@ def _observations_from_item(
             f"Scene {scene_id}: required band assets missing ({', '.join(missing)}); scene skipped."
         )
         return [], warnings
+    scl_href = _scl_asset_href(item)
+    if not scl_href:
+        warnings.append(f"Scene {scene_id}: SCL quality asset missing; scene skipped.")
+        return [], warnings
 
     properties = item.get("properties") or {}
     platform = properties.get("platform") or "Sentinel-2"
-    processing_baseline = properties.get("s2:processing_baseline")
+    processing_baseline = properties.get("s2:processing_baseline") or properties.get("processing:version")
     metadata_common: dict[str, Any] = {
         "scene_id": scene_id,
         "granule_id": scene_id,
@@ -410,30 +497,44 @@ def _observations_from_item(
         "processing_baseline": processing_baseline,
         "cloud_cover_pct": cloud_cover,
         "spatial_resolution_m": SENTINEL2_L2A.spatial_resolution_m,
-        "asset_refs": dict(hrefs),
+        "asset_refs": {**hrefs, "scl": scl_href},
         "raster_url": hrefs.get("nir"),
         "collection": DEFAULT_COLLECTION,
         "provider_code": PROVIDER_CODE,
     }
 
     try:
-        band_arrays, context = _load_scene_arrays(item, hrefs)
-        scl = context["scl"]
-        shape = context["shape"]
-        transform = band_arrays["red"]["transform"]
-        field_mask = geometry_mask(
-            [geometry_geojson],
-            out_shape=shape,
-            transform=transform,
-            invert=True,
+        reading = _load_scene_arrays(item, hrefs, geometry_geojson, gdal_env)
+        scl = reading.fmask
+        shape = (reading.height, reading.width)
+        if scl is None or scl.shape != shape:
+            raise ValueError("SCL QA asset is missing or not aligned to the field window")
+        field_mask = pre.field_mask_for_window(
+            geometry_geojson=geometry_geojson,
+            crs_string=reading.crs,
+            transform=reading.transform,
+            width=reading.width,
+            height=reading.height,
         )
-        # DN -> surface reflectance (documented L2A scaling).
+        radiometry = _radiometry_for_scene(item, reading, hrefs)
         reflectances = {
-            surface: arr["data"] * SENTINEL2_L2A.scale + SENTINEL2_L2A.offset
-            for surface, arr in band_arrays.items()
+            surface: data * radiometry[surface]["scale"] + radiometry[surface]["offset"]
+            for surface, data in reading.arrays.items()
         }
         index_arrays = compute_index_arrays(reflectances=reflectances, indices=variables)
-        cloud_mask = np.isin(scl, SCL_EXCLUDED_CLASSES) if scl is not None else None
+        cloud_mask = np.isin(scl, SCL_EXCLUDED_CLASSES)
+        metadata_common["radiometry"] = radiometry
+        metadata_common["scl_excluded_classes"] = list(SCL_EXCLUDED_CLASSES)
+        metadata_common["raster_window"] = {
+            "crs": reading.crs,
+            "bounds": list(reading.window_bounds),
+            "width_px": reading.width,
+            "height_px": reading.height,
+            "read_bytes_estimate": reading.read_bytes_estimate,
+            "read_mode": "windowed_range_read",
+            "band_alignment": reading.band_alignment,
+            "reference_grid": "red_10m",
+        }
     except ProviderUnavailable:
         raise
     except Exception as exc:  # noqa: BLE001 — network/raster failures degrade per scene
@@ -450,15 +551,7 @@ def _observations_from_item(
         if index_array is None or not bool(np.any(np.isfinite(index_array))):
             stats.flags.append("no_valid_pixels")
         else:
-            # zonal_statistics expects a rasterio dataset; operate on arrays
-            # directly here (mask + nan-aware statistics).
-            inside = field_mask & np.isfinite(index_array)
-            if cloud_mask is not None:
-                if cloud_mask.shape != shape:
-                    cloud_mask = np.kron(cloud_mask, np.ones((2, 2), dtype=bool))[
-                        : shape[0], : shape[1]
-                    ]
-                inside = inside & ~cloud_mask
+            inside = field_mask & np.isfinite(index_array) & ~cloud_mask
             values = index_array[inside].astype("float64")
             masked_pixels = int(field_mask.sum())
             stats.masked_pixels = masked_pixels
@@ -482,7 +575,14 @@ def _observations_from_item(
 
         value = stats.mean if stats.valid_pixels > 0 else None
         quality = QualityStatus.valid if value is not None else QualityStatus.missing
+        required_surfaces = pre.required_surfaces_for_indices([vcode])
+        surface_resolution = {
+            surface: SENTINEL2_BAND_RESOLUTION_M.get(_SURFACE_TO_BAND[surface], 10.0)
+            for surface in required_surfaces
+        }
+        effective_resolution = max(surface_resolution.values(), default=10.0)
         obs_metadata = dict(metadata_common)
+        obs_metadata["spatial_resolution_m"] = effective_resolution
         obs_metadata["zonal"] = stats.as_dict()
         obs_metadata["subfield_statistics_ok"] = subfield_statistics_ok(stats.valid_pixels)
         if value is None:
@@ -490,7 +590,7 @@ def _observations_from_item(
                 {
                     "flag_code": "CLOUD_OCCLUDED_OR_NO_COVERAGE",
                     "severity": "warning",
-                    "message": "No usable field pixels after cloud/nodata masking.",
+                    "message": "No usable field pixels after SCL/nodata masking.",
                 }
             ]
         else:
@@ -500,7 +600,8 @@ def _observations_from_item(
                     "severity": "info",
                     "message": (
                         f"Per-pixel {vcode.upper()} over field mask "
-                        f"({stats.valid_pixels} valid pixels, SCL cloud-masked)."
+                        f"({stats.valid_pixels} valid pixels; SCL cloud/shadow/snow "
+                        f"mask applied; effective input resolution {effective_resolution:g} m)."
                     ),
                 }
             ]
@@ -514,9 +615,7 @@ def _observations_from_item(
                 period_end=acquired_at,
                 time_support=TimeSupport.instant,
                 spatial_support_type="polygon_average",
-                spatial_resolution_m=SENTINEL2_BAND_RESOLUTION_M.get(
-                    SENTINEL2_L2A.red, 10.0
-                ),
+                spatial_resolution_m=effective_resolution,
                 quality_status=quality,
                 uncertainty_value=None,
                 uncertainty_type="not_quantified",
@@ -528,3 +627,5 @@ def _observations_from_item(
             )
         )
     return observations, warnings
+
+
