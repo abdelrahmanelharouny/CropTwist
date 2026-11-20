@@ -21,14 +21,14 @@ def _write_sentinel2_item(tmp_path, *, baseline="05.11", stac_radiometry=True, i
     transform_10m = from_origin(500000, 3800000, 10, 10)
     transform_20m = from_origin(500000, 3800000, 20, 20)
     spectral = {
-        "B02_10m": ("blue", 1000, 10, 110, transform_10m),
-        "B03_10m": ("green", 2000, 10, 110, transform_10m),
-        "B04_10m": ("red", 3000, 10, 110, transform_10m),
-        "B08_10m": ("nir", 7000, 10, 110, transform_10m),
-        "B11_20m": ("swir1", 5000, 20, 55, transform_20m),
+        "B02_10m": (1000, 10, 110, transform_10m),
+        "B03_10m": (2000, 10, 110, transform_10m),
+        "B04_10m": (3000, 10, 110, transform_10m),
+        "B08_10m": (7000, 10, 110, transform_10m),
+        "B11_20m": (5000, 20, 55, transform_20m),
     }
     assets = {}
-    for key, (surface, value, resolution, width, transform) in spectral.items():
+    for key, (value, resolution, width, transform) in spectral.items():
         height = 100 if resolution == 10 else 50
         path = tmp_path / f"{key}.tif"
         with rasterio.open(
@@ -95,7 +95,7 @@ def _observations(item, variables=("ndvi", "ndmi")):
 
 
 def test_mixed_resolution_sentinel2_scene_is_aligned_and_baseline_scaled(tmp_path):
-    item = _write_sentinel2_item(tmp_path)
+    item = _write_sentinel2_item(tmp_path, baseline="03.01")
     observations, warnings = _observations(item)
 
     assert warnings == []
@@ -133,6 +133,15 @@ def test_legacy_processing_baseline_uses_zero_offset(tmp_path):
     ndvi = observations[0]
     assert ndvi.value == pytest.approx(0.4, abs=1e-6)
     assert ndvi.metadata["radiometry"]["red"]["offset"] == 0.0
+
+
+def test_missing_offset_and_baseline_fails_closed(tmp_path):
+    from app.core.errors import ProviderUnavailable
+
+    item = _write_sentinel2_item(tmp_path, stac_radiometry=False)
+    item["properties"].pop("s2:processing_baseline")
+    with pytest.raises(ProviderUnavailable, match="no Sentinel-2 processing baseline"):
+        _observations(item, variables=("ndvi",))
 
 
 def test_scene_without_scl_is_skipped_instead_of_claiming_cloud_masking(tmp_path):
