@@ -9,9 +9,10 @@ Sentinel-2 L2A (surface reflectance) products:
   account; these are NOT the account username/password. Keys are read from
   the secret-backed settings `CROPTWIST_CDSE_S3_ACCESS_KEY` and
   `CROPTWIST_CDSE_S3_SECRET_KEY`, never hardcoded.
-- STAC-compatible alternates (e.g. Microsoft Planetary Computer) work by
-  pointing `CROPTWIST_SENTINEL2_STAC_BASE_URL` at their catalogue; their
-  signed asset URLs are used without forwarding CDSE credentials.
+- Alternate STAC endpoints can be configured, but the provider currently
+  supports only directly accessible HTTPS assets. It does not yet implement
+  provider-specific signing (for example, Microsoft Planetary Computer SAS
+  signing). CDSE credentials are never forwarded to alternate hosts.
 
 Processing pipeline per scene (when network access exists):
 1. STAC search: bbox of field geometry, datetime range, collection
