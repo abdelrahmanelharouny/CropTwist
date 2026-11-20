@@ -15,6 +15,7 @@ from app.data_platform.providers.sentinel2.provider import (
     Sentinel2StacProvider,
     _gdal_env_options,
     _observations_from_item,
+    _rasterio_asset_href,
     _safe_asset_href_for_metadata,
 )
 from tests.fixtures.raster_fixtures import fixture_field_geojson
@@ -188,3 +189,51 @@ def test_alternate_stac_provider_never_receives_cdse_credentials(monkeypatch):
 def test_signed_asset_query_is_removed_before_metadata_persistence():
     href = "https://example.com/band.tif?sig=secret&token=private#fragment"
     assert _safe_asset_href_for_metadata(href) == "https://example.com/band.tif"
+
+
+def test_processing_version_is_used_when_legacy_s2_baseline_is_absent(tmp_path):
+    item = _write_sentinel2_item(tmp_path, stac_radiometry=False)
+    item["properties"].pop("s2:processing_baseline")
+    item["properties"]["processing:version"] = "05.11"
+
+    observations, warnings = _observations(item, variables=("ndvi",))
+
+    assert warnings == []
+    assert observations[0].metadata["processing_baseline"] == "05.11"
+    assert observations[0].metadata["radiometry"]["red"]["offset"] == -0.1
+    assert observations[0].metadata["radiometry"]["red"]["offset_source"] == "processing_baseline"
+
+
+def test_cdse_s3_asset_uri_maps_to_gdal_vsis3_path():
+    href = "s3://eodata/Sentinel-2/MSI/L2A/2025/12/29/B04_10m.jp2"
+    assert _rasterio_asset_href(href) == "/vsis3/eodata/Sentinel-2/MSI/L2A/2025/12/29/B04_10m.jp2"
+
+
+def test_cdse_s3_gdal_environment_uses_separate_s3_credentials(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "cdse_s3_access_key", "test-access-key")
+    monkeypatch.setattr(settings, "cdse_s3_secret_key", "test-secret-key")
+    hrefs = [
+        "s3://eodata/Sentinel-2/MSI/L2A/2025/12/29/B04_10m.jp2",
+        "s3://eodata/Sentinel-2/MSI/L2A/2025/12/29/SCL_20m.jp2",
+    ]
+
+    env = _gdal_env_options({}, hrefs)
+
+    assert env["AWS_ACCESS_KEY_ID"] == "test-access-key"
+    assert env["AWS_SECRET_ACCESS_KEY"] == "test-secret-key"
+    assert env["AWS_S3_ENDPOINT"] == "eodata.dataspace.copernicus.eu"
+    assert env["AWS_VIRTUAL_HOSTING"] == "FALSE"
+    assert env["AWS_HTTPS"] == "YES"
+    assert "GDAL_HTTP_HEADERS" not in env
+
+
+def test_cdse_s3_gdal_environment_fails_closed_without_s3_keys(monkeypatch):
+    from app.core.config import settings
+    from app.core.errors import ProviderUnavailable
+
+    monkeypatch.setattr(settings, "cdse_s3_access_key", "")
+    monkeypatch.setattr(settings, "cdse_s3_secret_key", "")
+    with pytest.raises(ProviderUnavailable, match="CDSE S3 credentials are required"):
+        _gdal_env_options({}, ["s3://eodata/Sentinel-2/MSI/L2A/2025/12/29/B04_10m.jp2"])
