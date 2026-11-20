@@ -81,6 +81,8 @@ class WindowReading:
     nodata_values: dict[str, float | None]
     band_alignment: dict[str, str]  # surface -> 'native' | 'reprojected'
     read_bytes_estimate: int
+    scale_values: dict[str, float] = field(default_factory=dict)
+    offset_values: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -205,27 +207,30 @@ def read_scene_window(
     geometry_geojson: dict[str, Any],
     gdal_env: dict[str, str] | None = None,
     max_window_mb: float = 256.0,
+    nodata_fallbacks: dict[str, float] | None = None,
 ) -> WindowReading:
-    """Read ONLY the field bounding-box window from the scene COGs.
+    """Read a field-sized reference window and align every asset to its grid.
 
-    The field geometry (EPSG:4326) is reprojected into the raster CRS to
-    compute the window; the returned arrays are exactly window-sized. Bands
-    arriving on a different grid are aligned (documented reprojection).
-    Raises ValueError with explicit reasons when the window is empty or the
-    estimated in-memory size exceeds ``max_window_mb``.
+    The reference surface determines the output grid. Other reflectance bands
+    are warped directly from their source datasets to that grid, so 10 m and
+    20 m Sentinel-2 bands are aligned by geospatial coordinates rather than
+    by reusing the same pixel offsets. QA assets use nearest-neighbour
+    resampling; reflectance uses bilinear. Rasterio/GDAL reads only source
+    blocks needed for the target window from COGs.
     """
     import numpy as np
     import rasterio
+    from rasterio.enums import Resampling
+    from rasterio.warp import reproject
     from rasterio.windows import Window, from_bounds
 
     env = dict(gdal_env or {})
+    fallbacks = dict(nodata_fallbacks or {})
     band_hrefs = [assets[s] for s in surfaces if assets.get(s)]
     if not band_hrefs:
         raise ValueError("no band assets available for the requested surfaces")
 
     geom_ll = _geojson_to_shapely(geometry_geojson)
-
-    reference = None  # (crs, full transform, full bounds, nodata)
     with rasterio.Env(**env):
         with rasterio.open(band_hrefs[0]) as src:
             if src.crs is None:
@@ -234,9 +239,7 @@ def read_scene_window(
             full_transform = src.transform
             full_bounds = src.bounds
             full_shape = (src.height, src.width)
-            reference_nodata = src.nodata
             if crs.to_epsg() is None:
-                # Non-EPSG CRS (rare for HLS): still usable via pyproj string.
                 geom_rc = _reproject_geom_via_pyproj(geom_ll, crs.to_wkt())
             else:
                 geom_rc = _reproject_geometry(geom_ll, src_epsg=4326, dst_epsg=crs.to_epsg())
@@ -254,113 +257,141 @@ def read_scene_window(
                 raise ValueError("field geometry does not intersect this scene after reprojection")
             window = from_bounds(minx, miny, maxx, maxy, transform=full_transform)
             window = window.round_offsets().round_lengths()
-            window = window.intersection(
-                Window(0, 0, full_shape[1], full_shape[0])
-            )
+            window = window.intersection(Window(0, 0, full_shape[1], full_shape[0]))
             if window.width < 1 or window.height < 1:
                 raise ValueError("field window collapses to zero pixels in this scene")
-            est_bytes = int(window.width * window.height * (len(surfaces) + 2) * 8)
+            height, width = int(window.height), int(window.width)
+            est_bytes = int(width * height * (len(surfaces) + 2) * 8)
             if est_bytes > max_window_mb * 1024 * 1024:
                 raise ValueError(
                     f"field window would need ~{est_bytes / 1e6:.1f} MB in memory "
                     f"(cap {max_window_mb:.0f} MB); refusing unbounded read"
                 )
+            out_transform = src.window_transform(window)
             reference = {
                 "crs": crs,
-                "transform": src.window_transform(window),
+                "transform": out_transform,
+                "full_transform": full_transform,
+                "full_shape": full_shape,
                 "window": window,
-                "nodata": reference_nodata,
             }
-            out_transform = reference["transform"]
 
         arrays: dict[str, Any] = {}
         nodata_values: dict[str, float | None] = {}
+        scale_values: dict[str, float] = {}
+        offset_values: dict[str, float] = {}
         band_alignment: dict[str, str] = {}
-        for surface, href in ((s, assets.get(s)) for s in surfaces if assets.get(s)):
+
+        for surface in surfaces:
+            href = assets.get(surface)
+            if not href:
+                continue
             with rasterio.open(href) as src:
-                if src.crs != reference["crs"]:
-                    raise ValueError(
-                        f"band '{surface}' CRS {src.crs} differs from reference "
-                        f"{reference['crs']}; refusing mixed-CRS scene"
-                    )
-                data = src.read(
-                    1,
-                    window=reference["window"],
-                    out_shape=(int(reference["window"].height), int(reference["window"].width)),
-                    boundless=False,
-                ).astype("float64")
-                src_transform = src.window_transform(reference["window"])
-                if src_transform.almost_equals(out_transform, precision=1e-9) and data.shape == (
-                    int(reference["window"].height),
-                    int(reference["window"].width),
-                ):
+                if src.crs is None:
+                    raise ValueError(f"band '{surface}' has no CRS metadata; refusing to guess")
+                nodata = src.nodata
+                if nodata is None:
+                    nodata = fallbacks.get(surface)
+                native_grid = (
+                    src.crs == reference["crs"]
+                    and src.transform.almost_equals(reference["full_transform"], precision=1e-9)
+                    and src.width == reference["full_shape"][1]
+                    and src.height == reference["full_shape"][0]
+                )
+                if native_grid:
+                    data = src.read(1, window=reference["window"]).astype("float64")
+                    if nodata is not None:
+                        data[data == nodata] = np.nan
                     band_alignment[surface] = "native"
                 else:
-                    data = _align_to_grid(
-                        data, src_transform, out_transform, resampling="bilinear"
+                    data = np.full((height, width), np.nan, dtype="float64")
+                    reproject(
+                        source=rasterio.band(src, 1),
+                        destination=data,
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        src_nodata=nodata,
+                        dst_transform=reference["transform"],
+                        dst_crs=reference["crs"],
+                        dst_nodata=np.nan,
+                        resampling=Resampling.bilinear,
                     )
                     band_alignment[surface] = "reprojected"
-                nodata_values[surface] = src.nodata
-                if src.nodata is not None:
-                    data[data == src.nodata] = np.nan
                 arrays[surface] = data
+                nodata_values[surface] = nodata
+                scale_values[surface] = float(src.scales[0]) if src.scales else 1.0
+                offset_values[surface] = float(src.offsets[0]) if src.offsets else 0.0
+
+        if not arrays:
+            raise ValueError("no requested reflectance bands could be read")
 
         fmask = None
         fmask_href = assets.get("fmask")
         if fmask_href:
             with rasterio.open(fmask_href) as src:
-                if src.crs is not None and src.crs != reference["crs"]:
-                    band_alignment["fmask"] = "reprojected"
-                    data = src.read(
-                        1,
-                        window=reference["window"],
-                        out_shape=(
-                            int(reference["window"].height),
-                            int(reference["window"].width),
-                        ),
-                    )
-                    fmask = _align_to_grid(
-                        data.astype("float64"),
-                        src.window_transform(reference["window"]),
-                        out_transform,
-                        resampling="nearest",
-                    ).astype("uint8")
-                else:
-                    fmask = src.read(
-                        1,
-                        window=reference["window"],
-                        out_shape=(
-                            int(reference["window"].height),
-                            int(reference["window"].width),
-                        ),
-                    )
+                if src.crs is None:
+                    raise ValueError("QA asset has no CRS metadata; refusing to guess")
+                qa_nodata = src.nodata
+                if qa_nodata is None:
+                    qa_nodata = fallbacks.get("fmask", 255)
+                native_grid = (
+                    src.crs == reference["crs"]
+                    and src.transform.almost_equals(reference["full_transform"], precision=1e-9)
+                    and src.width == reference["full_shape"][1]
+                    and src.height == reference["full_shape"][0]
+                )
+                if native_grid:
+                    fmask = src.read(1, window=reference["window"]).astype("uint8")
+                    if qa_nodata is not None:
+                        fmask[fmask == qa_nodata] = 255
                     band_alignment["fmask"] = "native"
+                else:
+                    fmask = np.full((height, width), 255, dtype="uint8")
+                    reproject(
+                        source=rasterio.band(src, 1),
+                        destination=fmask,
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        src_nodata=qa_nodata,
+                        dst_transform=reference["transform"],
+                        dst_crs=reference["crs"],
+                        dst_nodata=255,
+                        resampling=Resampling.nearest,
+                    )
+                    band_alignment["fmask"] = "reprojected"
 
-    height, width = arrays[next(iter(arrays))].shape
-    # Window bounds in the raster CRS (for storage metadata).
-    w = reference["window"]
-    window_bounds = (
-        full_bounds.left + w.col_off * full_transform.a,
-        full_bounds.bottom + w.row_off * full_transform.e,
-        full_bounds.left + (w.col_off + w.width) * full_transform.a,
-        full_bounds.bottom + (w.row_off + w.height) * full_transform.e,
-    )
+    corners = [
+        reference["full_transform"] * (reference["window"].col_off, reference["window"].row_off),
+        reference["full_transform"] * (
+            reference["window"].col_off + reference["window"].width,
+            reference["window"].row_off,
+        ),
+        reference["full_transform"] * (
+            reference["window"].col_off,
+            reference["window"].row_off + reference["window"].height,
+        ),
+        reference["full_transform"] * (
+            reference["window"].col_off + reference["window"].width,
+            reference["window"].row_off + reference["window"].height,
+        ),
+    ]
+    xs = [point[0] for point in corners]
+    ys = [point[1] for point in corners]
+    window_bounds = (min(xs), min(ys), max(xs), max(ys))
+
     return WindowReading(
         arrays=arrays,
         fmask=fmask,
-        transform=out_transform,
+        transform=reference["transform"],
         crs=reference["crs"].to_string(),
         width=width,
         height=height,
-        window_bounds=(
-            min(window_bounds[0], window_bounds[2]),
-            min(window_bounds[1], window_bounds[3]),
-            max(window_bounds[0], window_bounds[2]),
-            max(window_bounds[1], window_bounds[3]),
-        ),
+        window_bounds=window_bounds,
         nodata_values=nodata_values,
         band_alignment=band_alignment,
         read_bytes_estimate=est_bytes,
+        scale_values=scale_values,
+        offset_values=offset_values,
     )
 
 
