@@ -359,7 +359,11 @@ def _assets_for_surfaces(item: dict[str, Any]) -> dict[str, str]:
 def _scl_asset_href(item: dict[str, Any]) -> str | None:
     assets = item.get("assets") or {}
     for key, asset in assets.items():
-        if key.split("_")[0].lower() == "scl" and isinstance(asset, dict) and asset.get("href"):
+        if (
+            key.split("_")[0].lower() == "scl"
+            and isinstance(asset, dict)
+            and asset.get("href")
+        ):
             return str(asset["href"])
     return None
 
@@ -379,7 +383,11 @@ def _load_scene_arrays(
     assets = {**hrefs, "fmask": scl_href}
     return pre.read_scene_window(
         assets=assets,
-        surfaces=tuple(surface for surface in ("red", "nir", "blue", "green", "swir1") if hrefs.get(surface)),
+        surfaces=tuple(
+            surface
+            for surface in ("red", "nir", "blue", "green", "swir1")
+            if hrefs.get(surface)
+        ),
         geometry_geojson=geometry_geojson,
         gdal_env=gdal_env or {},
         max_window_mb=settings.raster_max_field_window_mb,
@@ -402,7 +410,7 @@ def _radiometry_for_scene(
 ) -> dict[str, dict[str, Any]]:
     """Resolve per-band scale/offset from STAC, GeoTIFF tags, then baseline."""
     properties = item.get("properties") or {}
-    raw_baseline = properties.get("s2:processing_baseline") or properties.get("processing:version")
+    raw_baseline = properties.get("s2:processing_baseline")
     baseline_offset: float | None = None
     if raw_baseline is not None:
         match = re.match(r"^\s*(\d+(?:\.\d+)?)", str(raw_baseline))
@@ -455,7 +463,8 @@ def _gdal_env_options(headers: dict[str, str] | None) -> dict[str, str]:
     """Translate HTTP auth headers into GDAL's per-request header option."""
     if not headers:
         return {}
-    return {"GDAL_HTTP_HEADERS": "\r\n".join(f"{key}: {value}" for key, value in headers.items()) + "\r\n"}
+    header_lines = [f"{key}: {value}" for key, value in headers.items()]
+    return {"GDAL_HTTP_HEADERS": "\r\n".join(header_lines) + "\r\n"}
 
 
 def _observations_from_item(
@@ -491,7 +500,7 @@ def _observations_from_item(
 
     properties = item.get("properties") or {}
     platform = properties.get("platform") or "Sentinel-2"
-    processing_baseline = properties.get("s2:processing_baseline") or properties.get("processing:version")
+    processing_baseline = properties.get("s2:processing_baseline")
     metadata_common: dict[str, Any] = {
         "scene_id": scene_id,
         "granule_id": scene_id,
