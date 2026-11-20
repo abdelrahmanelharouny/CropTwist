@@ -433,6 +433,36 @@ def test_per_scene_degradation_degrades_only_that_scene(monkeypatch):
     assert {o.metadata["scene_id"] for o in result.observations} == {good}
 
 
+def test_scene_without_fmask_is_skipped_instead_of_claiming_qa_masking(monkeypatch):
+    import numpy as np
+
+    dn_red = np.full((12, 12), 0.12 * 10000)
+    dn_nir = np.full((12, 12), 0.42 * 10000)
+    _fake_raster_seam(monkeypatch, dn_red, dn_nir)
+
+    provider = NasaHlsProvider(client=make_client([_search_body([])]))
+    aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
+    scene_id = "HLS.L30.T16SDC.2024189T164537.v2.0"
+    records = {
+        scene_id: {
+            "scene_id": scene_id,
+            "collection": "HLSL30",
+            "acquired_at": "2024-07-07T16:45:37+00:00",
+            "assets": {"red": "r.tif", "nir": "n.tif"},
+        }
+    }
+    result = provider.fetch_observations(
+        area_of_interest=aoi,
+        variables=["ndvi"],
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+        options={"scene_ids": [scene_id], "scene_records": records},
+    )
+    assert result.observations == []
+    assert result.coverage["scenes_processed"] == 0
+    assert any("required band assets missing (fmask)" in warning for warning in result.warnings)
+
+
 def test_scene_records_without_acquired_at_rejected():
     provider = NasaHlsProvider(client=make_client([_search_body([])]))
     aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
