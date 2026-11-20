@@ -21,6 +21,7 @@ from tests.fixtures.raster_fixtures import (
     EXPECTED_STRESSED,
     EXPECTED_VEGETATED,
     FIXTURE_CRS,
+    FMASK_RESERVED_BIT0,
     FMASK_WATER,
     fixture_field_geojson,
     write_fixture_scene,
