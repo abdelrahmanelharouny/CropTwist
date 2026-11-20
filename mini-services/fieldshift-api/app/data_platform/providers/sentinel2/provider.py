@@ -42,6 +42,7 @@ Honesty properties:
 import logging
 import re
 from datetime import UTC, datetime
+from urllib.parse import urlsplit, urlunsplit
 from typing import Any
 
 import httpx
@@ -76,6 +77,45 @@ DEFAULT_MAX_CLOUD = 80.0
 SEARCH_TIMEOUT_SECONDS = 30.0
 
 SUPPORTED_VARIABLES = supported_indices()
+
+_CDSE_STAC_HOSTS = {
+    "stac.dataspace.copernicus.eu",
+    "catalogue.dataspace.copernicus.eu",  # legacy endpoint; explicit migration only
+}
+_CDSE_IDENTITY_HOST = "identity.dataspace.copernicus.eu"
+
+
+def _https_host(url: str) -> str | None:
+    try:
+        parsed = urlsplit(str(url))
+        if parsed.scheme.lower() != "https":
+            return None
+        return (parsed.hostname or "").lower() or None
+    except ValueError:
+        return None
+
+
+def _is_cdse_asset_url(url: str) -> bool:
+    host = _https_host(url)
+    return bool(host and (host == "dataspace.copernicus.eu" or host.endswith(".dataspace.copernicus.eu")))
+
+
+def _safe_asset_href_for_metadata(href: str | None) -> str | None:
+    """Drop credentials, query signatures and fragments before persistence."""
+    if not href:
+        return None
+    try:
+        parsed = urlsplit(str(href))
+        if not parsed.scheme and not parsed.netloc:
+            return parsed.path
+        host = parsed.hostname or ""
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        if parsed.port:
+            host = f"{host}:{parsed.port}"
+        return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+    except ValueError:
+        return "[redacted-invalid-asset-url]"
 
 # Sentinel-2 SCL classes excluded from vegetation statistics:
 # 0 no-data, 1 saturated/defective, 3 cloud shadow, 7 unclassified,
@@ -141,7 +181,17 @@ class Sentinel2StacProvider:
         """CDSE OAuth2 password grant; retain the same token for COG reads."""
         username = settings.cdse_username
         password = settings.cdse_password
-        if not username or not password:
+        stac_host = _https_host(self._stac_base_url())
+        token_host = _https_host(settings.cdse_token_url)
+        # CDSE credentials must never be sent to an alternate STAC provider or
+        # an operator-overridden token endpoint. Alternate catalogues use their
+        # own signed asset URLs instead.
+        if (
+            not username
+            or not password
+            or stac_host not in _CDSE_STAC_HOSTS
+            or token_host != _CDSE_IDENTITY_HOST
+        ):
             self._last_auth_headers = {}
             return {}
         try:
@@ -245,7 +295,6 @@ class Sentinel2StacProvider:
             end=end.astimezone(UTC),
             max_cloud_cover=max_cloud,
         )
-        gdal_env = _gdal_env_options(self._last_auth_headers)
         if not items:
             return ProviderFetchResult(
                 provider_code=PROVIDER_CODE,
@@ -289,7 +338,7 @@ class Sentinel2StacProvider:
                 variables=sorted(set(variables)),
                 geometry_geojson=area_of_interest.geometry_geojson,
                 options=options,
-                gdal_env=gdal_env,
+                gdal_auth_headers=self._last_auth_headers,
             )
             observations.extend(scene_obs)
             warnings.extend(scene_warnings)
@@ -459,12 +508,22 @@ def _radiometry_for_scene(
     return radiometry
 
 
-def _gdal_env_options(headers: dict[str, str] | None) -> dict[str, str]:
-    """Translate HTTP auth headers into GDAL's per-request header option."""
-    if not headers:
+def _gdal_env_options(
+    headers: dict[str, str] | None,
+    asset_hrefs: list[str | None] | None = None,
+) -> dict[str, str]:
+    """Pass CDSE bearer auth only to verified HTTPS CDSE asset hosts.
+
+    A STAC item can point at a third-party signed URL. GDAL_HTTP_HEADERS is
+    process-wide for the raster read and must not forward a CDSE bearer token
+    to arbitrary asset hosts or redirect targets.
+    """
+    if not headers or not asset_hrefs:
+        return {}
+    if not all(href and _is_cdse_asset_url(href) for href in asset_hrefs):
         return {}
     header_lines = [f"{key}: {value}" for key, value in headers.items()]
-    return {"GDAL_HTTP_HEADERS": "\r\n".join(header_lines) + "\r\n"}
+    return {"GDAL_HTTP_HEADERS": "\\r\\n".join(header_lines) + "\\r\\n"}
 
 
 def _observations_from_item(
@@ -477,6 +536,7 @@ def _observations_from_item(
     geometry_geojson: dict[str, Any],
     options: dict[str, Any],
     gdal_env: dict[str, str] | None = None,
+    gdal_auth_headers: dict[str, str] | None = None,
 ) -> tuple[list[CanonicalObservation], list[str]]:
     """Compute indices on one CRS-correct, aligned, quality-masked field window."""
     import numpy as np
@@ -508,14 +568,22 @@ def _observations_from_item(
         "processing_baseline": processing_baseline,
         "cloud_cover_pct": cloud_cover,
         "spatial_resolution_m": SENTINEL2_L2A.spatial_resolution_m,
-        "asset_refs": {**hrefs, "scl": scl_href},
-        "raster_url": hrefs.get("nir"),
+        "asset_refs": {
+            **{key: _safe_asset_href_for_metadata(value) for key, value in hrefs.items()},
+            "scl": _safe_asset_href_for_metadata(scl_href),
+        },
+        "raster_url": _safe_asset_href_for_metadata(hrefs.get("nir")),
         "collection": DEFAULT_COLLECTION,
         "provider_code": PROVIDER_CODE,
     }
 
     try:
-        reading = _load_scene_arrays(item, hrefs, geometry_geojson, gdal_env)
+        safe_gdal_env = (
+            _gdal_env_options(gdal_auth_headers, [*hrefs.values(), scl_href])
+            if gdal_auth_headers
+            else (gdal_env or {})
+        )
+        reading = _load_scene_arrays(item, hrefs, geometry_geojson, safe_gdal_env)
         scl = reading.fmask
         shape = (reading.height, reading.width)
         if scl is None or scl.shape != shape:
@@ -549,10 +617,13 @@ def _observations_from_item(
     except ProviderUnavailable:
         raise
     except Exception as exc:  # noqa: BLE001 — network/raster failures degrade per scene
+        # Raster/GDAL errors can echo signed asset URLs. Keep secrets out of
+        # API responses, persisted job details and logs.
+        reason = type(exc).__name__
         raise ProviderUnavailable(
-            f"Scene {scene_id} could not be read or validated ({exc}); verify "
+            f"Scene {scene_id} could not be read or validated ({reason}); verify "
             "provider access, raster CRS, QA assets and radiometric metadata.",
-            details=[{"scene_id": scene_id, "reason": str(exc)}],
+            details=[{"scene_id": scene_id, "reason": reason}],
         ) from exc
 
     observations: list[CanonicalObservation] = []
