@@ -539,19 +539,21 @@ def _scene_observations(
             "band_alignment": context["band_alignment"],
         }
         field_fmask = fmask[field_mask].astype(np.uint8)
+        valid_qa = field_fmask != 255
         aot_level = (field_fmask & FMASK_AOT_MASK) >> 6
         metadata_common["fmask_qa"] = {
-            "cloud_pixels": int(((field_fmask & 0b00000010) != 0).sum()),
-            "adjacent_to_cloud_pixels": int(((field_fmask & 0b00000100) != 0).sum()),
-            "shadow_pixels": int(((field_fmask & 0b00001000) != 0).sum()),
-            "snow_pixels": int(((field_fmask & 0b00010000) != 0).sum()),
-            "water_pixels": int(((field_fmask & 0b00100000) != 0).sum()),
-            "reserved_bit0_pixels": int(((field_fmask & 0b00000001) != 0).sum()),
+            "cloud_pixels": int((((field_fmask & 0b00000010) != 0) & valid_qa).sum()),
+            "adjacent_to_cloud_pixels": int((((field_fmask & 0b00000100) != 0) & valid_qa).sum()),
+            "shadow_pixels": int((((field_fmask & 0b00001000) != 0) & valid_qa).sum()),
+            "snow_pixels": int((((field_fmask & 0b00010000) != 0) & valid_qa).sum()),
+            "water_pixels": int((((field_fmask & 0b00100000) != 0) & valid_qa).sum()),
+            "reserved_bit0_pixels": int((((field_fmask & 0b00000001) != 0) & valid_qa).sum()),
+            "qa_nodata_pixels": int((~valid_qa).sum()),
             "aot_level_counts": {
-                "climatology": int((aot_level == 0).sum()),
-                "medium": int((aot_level == 1).sum()),
-                "low": int((aot_level == 2).sum()),
-                "high": int((aot_level == 3).sum()),
+                "climatology": int(((aot_level == 0) & valid_qa).sum()),
+                "medium": int(((aot_level == 1) & valid_qa).sum()),
+                "low": int(((aot_level == 2) & valid_qa).sum()),
+                "high": int(((aot_level == 3) & valid_qa).sum()),
             },
         }
         # DN -> surface reflectance (HLS v2.0 documented scale factor).
