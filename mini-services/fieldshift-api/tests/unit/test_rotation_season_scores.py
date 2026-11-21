@@ -341,3 +341,36 @@ def test_point_values_take_precedence_over_interval_bounds_and_invalid_intervals
     assert crop.conservative_numeric_trait("point_trait") == 1.25
     assert crop.numeric_trait_bounds("bad_interval") is None
     assert crop.conservative_numeric_trait("bad_interval") is None
+
+
+
+def test_interval_trait_resolution_prefers_exact_regional_value_over_global():
+    from app.rotation.problem import TraitValue
+
+    crop = _crossing_problem().knowledge.crops["barley"]
+
+    def trait(region, low, high, source):
+        return TraitValue(
+            trait_code="root_depth_effective_m",
+            value_numeric=None,
+            value_text=None,
+            value_low=low,
+            value_high=high,
+            unit="m",
+            region_code=region,
+            evidence_class="published_reference",
+            confidence="moderate",
+            validation_status="reference",
+            source_key=source,
+            citation_text=source,
+            pack_code="kp",
+            pack_version="kp-test-1.0",
+        )
+
+    crop.traits["root_depth_effective_m"] = trait(None, 0.5, 1.0, "global")
+    crop.traits["root_depth_effective_m@EG"] = trait("EG", 1.1, 1.4, "egypt")
+    assert crop.numeric_trait_bounds("root_depth_effective_m", "EG") == (1.1, 1.4)
+    assert crop.conservative_numeric_trait(
+        "root_depth_effective_m", "EG", direction="maximize"
+    ) == 1.1
+    assert crop.numeric_trait_bounds("root_depth_effective_m", "US") == (0.5, 1.0)
