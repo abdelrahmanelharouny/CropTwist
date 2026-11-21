@@ -10,7 +10,7 @@ from app.data_platform.providers.wapor_v3_catalog import (
 def test_egypt_has_global_and_national_wapor_v3_products():
     products = products_for_country("egy", level=2)
     assert {item.code for item in products} == {
-        "L2-AETI-D", "L2-E-D", "L2-I-D", "L2-T-D", "L2-NPP-D"
+        "L2-AETI-D", "L2-E-D", "L2-I-D", "L2-T-D", "L2-NPP-D", "L2-RSM-D"
     }
     assert all(item.resolution_m == 100 for item in products)
 
