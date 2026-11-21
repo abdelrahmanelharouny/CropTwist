@@ -131,7 +131,7 @@ def test_field_window_refuses_non_tiled_asset(monkeypatch):
     monkeypatch.setattr(
         wapor_v3,
         "get_product",
-        lambda code: type("Product", (), {"resolution_m": 100, "unit": "mm/day", "scale_factor": 0.1, "metadata_reference": "https://example.org/spec"})(),
+        lambda code: type("Product", (), {"resolution_m": 100, "unit": "mm/day", "scale_factor": 0.1, "metadata_reference": "https://example.org/spec", "license": "CC BY-SA 4.0"})(),
     )
     monkeypatch.setattr(
         wapor_v3,
