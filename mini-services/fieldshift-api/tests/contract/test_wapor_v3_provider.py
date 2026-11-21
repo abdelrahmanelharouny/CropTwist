@@ -95,7 +95,7 @@ def test_field_window_masks_outside_field_and_preserves_raw_units(monkeypatch):
     monkeypatch.setattr(
         wapor_v3,
         "_read_raster_metadata",
-        lambda url: {"unit": "mm/dekad", "scale_factor": 0.1, "offset": 0.0, "nodata": -9999},
+        lambda url: {"unit": "mm/dekad", "scale_factor": 0.1, "offset": 0.0, "nodata": -9999, "is_tiled": True},
     )
     monkeypatch.setattr(
         "app.geospatial.preprocessing.read_scene_window",
