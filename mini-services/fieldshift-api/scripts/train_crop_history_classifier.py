@@ -16,7 +16,7 @@ import numpy as np
 from catboost import CatBoostClassifier
 from scipy.optimize import minimize_scalar
 from sklearn.metrics import balanced_accuracy_score, f1_score, log_loss
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import GroupKFold
 
 from app.intelligence.crop_history.training import spatial_temporal_holdout, validate_training_rows
 
@@ -71,39 +71,51 @@ def _evaluate_fold(rows: list[dict], train_idx: list[int], test_idx: list[int], 
     X_test = np.asarray([r["embedding"] for r in test_rows], dtype=np.float32)
     y_test = np.asarray([r["crop_code"] for r in test_rows])
 
-    if len(set(groups)) < 5:
-        raise ValueError("at least five training farm groups are required for grouped calibration")
-    fit_idx = calibration_idx = None
-    for attempt in range(10):
-        splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=seed + attempt)
-        candidate_fit, candidate_cal = next(splitter.split(X_train, y_train, groups=groups))
-        if set(y_train[candidate_fit]) == set(y_train) and set(y_train[candidate_cal]) == set(y_train):
-            fit_idx, calibration_idx = candidate_fit, candidate_cal
-            break
-    if fit_idx is None or calibration_idx is None:
-        raise ValueError("could not create farm-disjoint fit/calibration groups with all crop classes")
-    X_fit, y_fit = X_train[fit_idx], y_train[fit_idx]
-    X_cal, y_cal = X_train[calibration_idx], y_train[calibration_idx]
-    fit_classes = set(y_fit)
-    if not set(y_test) <= fit_classes:
-        raise ValueError("grouped fit partition does not cover all test crop classes")
+    if len(set(groups)) < 3:
+        raise ValueError("at least three training farm groups are required for grouped calibration")
+    classes = sorted(set(y_train))
+    oof_logits = np.full((len(y_train), len(classes)), np.nan, dtype=np.float64)
+    oof_seen = np.zeros(len(y_train), dtype=bool)
+    splitter = GroupKFold(n_splits=3)
+    for inner_train, calibration_idx in splitter.split(X_train, y_train, groups=groups):
+        X_fit, y_fit = X_train[inner_train], y_train[inner_train]
+        X_cal, y_cal = X_train[calibration_idx], y_train[calibration_idx]
+        if set(y_fit) != set(classes):
+            raise ValueError("a farm-disjoint calibration fold is missing one or more crop classes")
+        fold_model = CatBoostClassifier(
+            iterations=400, depth=6, learning_rate=0.05,
+            loss_function="MultiClass", random_seed=seed,
+            verbose=False, thread_count=2, allow_writing_files=False,
+        )
+        fold_model.fit(X_fit, y_fit)
+        fold_classes = [str(value) for value in fold_model.classes_]
+        if fold_classes != classes:
+            raise ValueError("CatBoost class order changed across calibration folds")
+        oof_logits[calibration_idx] = np.asarray(
+            fold_model.predict(X_cal, prediction_type="RawFormulaVal"), dtype=np.float64
+        )
+        oof_seen[calibration_idx] = True
+    if not oof_seen.all() or not np.isfinite(oof_logits).all():
+        raise ValueError("farm-disjoint out-of-fold calibration did not cover every training record")
+    if not set(y_test) <= set(classes):
+        raise ValueError("training partition does not cover all test crop classes")
 
+    def objective(log_temperature: float) -> float:
+        temperature = math.exp(log_temperature)
+        return float(log_loss(y_train, _softmax(oof_logits, temperature), labels=classes))
+
+    optimum = minimize_scalar(objective, bounds=(-3.0, 3.0), method="bounded")
+    temperature = math.exp(float(optimum.x))
     model = CatBoostClassifier(
         iterations=400, depth=6, learning_rate=0.05,
         loss_function="MultiClass", random_seed=seed,
         verbose=False, thread_count=2, allow_writing_files=False,
     )
-    model.fit(X_fit, y_fit)
-    classes = [str(value) for value in model.classes_]
-    cal_logits = np.asarray(model.predict(X_cal, prediction_type="RawFormulaVal"), dtype=np.float64)
+    model.fit(X_train, y_train)
+    final_classes = [str(value) for value in model.classes_]
+    if final_classes != classes:
+        raise ValueError("final CatBoost class order differs from calibrated out-of-fold order")
     test_logits = np.asarray(model.predict(X_test, prediction_type="RawFormulaVal"), dtype=np.float64)
-
-    def objective(log_temperature: float) -> float:
-        temperature = math.exp(log_temperature)
-        return float(log_loss(y_cal, _softmax(cal_logits, temperature), labels=classes))
-
-    optimum = minimize_scalar(objective, bounds=(-3.0, 3.0), method="bounded")
-    temperature = math.exp(float(optimum.x))
     probabilities = _softmax(test_logits, temperature)
     predictions = np.asarray(classes)[probabilities.argmax(axis=1)]
     confidence = probabilities.max(axis=1)
