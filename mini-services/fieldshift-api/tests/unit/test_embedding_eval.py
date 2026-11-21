@@ -133,3 +133,24 @@ def test_embedding_provider_benchmark_rejects_malformed_corpus(documents, querie
         asyncio.run(evaluate_embedding_provider(
             Provider(), documents=documents, queries=queries
         ))
+
+
+@pytest.mark.parametrize(
+    "ranking",
+    [
+        None,
+        ["d1", None],
+        ["d1", ["d2"]],
+        ["d1", "d1"],
+        ["d1", ""],
+    ],
+)
+def test_ranking_metrics_rejects_malformed_ranking_entries(ranking):
+    with pytest.raises(ValueError, match="ranking"):
+        evaluate_rankings(
+            query_ids=["q1"],
+            document_ids=["d1", "d2"],
+            rankings={"q1": ranking},
+            relevant_document_ids={"q1": {"d1"}},
+            ks=(1,),
+        )
