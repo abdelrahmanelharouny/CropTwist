@@ -160,6 +160,7 @@ def test_knowledge_search_fails_closed_without_uuid_organization_scope():
         {"max_candidates": True},
         {"min_similarity": True},
         {"min_similarity": float("nan")},
+        {"min_similarity": 10**10000},
     ],
 )
 def test_knowledge_search_rejects_boolean_or_non_finite_limits(kwargs):
