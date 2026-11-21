@@ -229,24 +229,13 @@ def _per_season_scores(
 
     # Horizon-invariant indicators remain keyed by crop and are checked over
     # the union of season-admissible candidates.
-    def sub(
-        crop: KnowledgeCrop,
-        code: str,
-        lo: float,
-        hi: float,
-        *,
-        value: float | None = None,
-    ) -> float | None:
-        resolved = (
-            crop.conservative_numeric_trait(
-                code, problem.farm.country_code, direction="maximize"
-            )
-            if value is None
-            else value
+    def sub(crop: KnowledgeCrop, code: str, lo: float, hi: float) -> float | None:
+        value = crop.conservative_numeric_trait(
+            code, problem.farm.country_code, direction="maximize"
         )
-        if resolved is None:
+        if value is None:
             return None
-        return max(0.0, min(1.0, (resolved - lo) / (hi - lo)))
+        return max(0.0, min(1.0, (value - lo) / (hi - lo)))
 
     soil: dict[str, float] = {}
     missing_soil: list[str] = []
@@ -254,28 +243,8 @@ def _per_season_scores(
         crop = problem.knowledge.crops[code]
         parts = [
             value for value in (
-                sub(
-                    crop,
-                    "root_depth_effective_m",
-                    0.3,
-                    1.8,
-                    value=crop.conservative_numeric_trait(
-                        "root_depth_effective_m",
-                        problem.farm.country_code,
-                        direction="maximize",
-                    ),
-                ),
-                sub(
-                    crop,
-                    "n_fixation_capacity_kg_ha",
-                    0,
-                    200,
-                    value=crop.conservative_numeric_trait(
-                        "n_fixation_capacity_kg_ha",
-                        problem.farm.country_code,
-                        direction="maximize",
-                    ),
-                ),
+                sub(crop, "root_depth_effective_m", 0.3, 1.8),
+                sub(crop, "n_fixation_capacity_kg_ha", 0, 200),
             ) if value is not None
         ]
         if parts:
