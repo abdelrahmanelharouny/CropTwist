@@ -144,3 +144,13 @@ def test_wapor_period_parser_handles_last_dekad_of_february():
     start, end = _dekad_period("2024-02-D3")
     assert start == datetime(2024, 2, 21, tzinfo=UTC)
     assert end == datetime(2024, 2, 29, 23, 59, 59, 999999, tzinfo=UTC)
+
+def test_wapor_fetch_bounds_field_window_memory_budget():
+    with pytest.raises(ValueError, match="between 1 and 256"):
+        WaPORV3Provider(FakeClient()).fetch_observations(
+            area_of_interest=AreaOfInterest(geometry_geojson=GEOMETRY),
+            variables=["actual_evapotranspiration_interception"],
+            start=datetime(2025, 1, 1, tzinfo=UTC),
+            end=datetime(2025, 1, 10, tzinfo=UTC),
+            options={"max_window_mb": 1024},
+        )
