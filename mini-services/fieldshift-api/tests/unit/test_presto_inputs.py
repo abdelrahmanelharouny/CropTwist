@@ -55,7 +55,8 @@ def test_presto_input_uses_upstream_17_channel_order_and_normalization():
     assert mask[0, 1, :].all()  # missing month is explicitly masked
     assert result["dynamic_world"][0, 0] == 4
     assert result["dynamic_world"][0, 1] == DYNAMIC_WORLD_MISSING
-    assert result["latlons"].tolist() == [[30.1, 31.2]]
+    assert result["latlons"][0, 0] == pytest.approx(30.1)
+    assert result["latlons"][0, 1] == pytest.approx(31.2)
     assert result["month"] == 0
 
 
