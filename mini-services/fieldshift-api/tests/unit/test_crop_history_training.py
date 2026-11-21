@@ -12,7 +12,9 @@ def _row(field, farm, region, year, crop):
         "season_year": year,
         "crop_code": crop,
         "label_source": "verified_farmer_record",
+        "label_source_verified": True,
         "label_license": "CC BY-SA 4.0",
+        "label_license_verified": True,
         "valid_pixel_coverage": 0.8,
         "embedding": [0.1] * 128,
     }
