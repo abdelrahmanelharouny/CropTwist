@@ -79,3 +79,65 @@ def test_farm_split_seed_changes_assignment_without_changing_group_membership():
     assert set(first["train"] + first["validation"] + first["test"]) == {
         record.farm_group_id for record in records
     }
+
+
+
+@pytest.mark.parametrize("bad_value", [True, "30.1", float("nan"), float("inf"), 10**10000])
+def test_record_centroid_and_coverage_reject_coerced_or_non_finite_values(bad_value):
+    with pytest.raises(ValidationError):
+        CropHistoryRecord(
+            field_id="f",
+            farm_group_id="farm",
+            country_code="EGY",
+            geometry_hash="0123456789abcdef",
+            centroid_lat=bad_value,
+            centroid_lon=31.2,
+            valid_pixel_coverage=0.8,
+            season_start=date(2025, 1, 1),
+            season_end=date(2025, 12, 31),
+            months=[MonthlyCropFeatures(month=1, year=2025, values={}, valid_observation_count=0)],
+        )
+    with pytest.raises(ValidationError):
+        CropHistoryRecord(
+            field_id="f",
+            farm_group_id="farm",
+            country_code="EGY",
+            geometry_hash="0123456789abcdef",
+            centroid_lat=30.1,
+            centroid_lon=31.2,
+            valid_pixel_coverage=bad_value,
+            season_start=date(2025, 1, 1),
+            season_end=date(2025, 12, 31),
+            months=[MonthlyCropFeatures(month=1, year=2025, values={}, valid_observation_count=0)],
+        )
+
+
+@pytest.mark.parametrize("bad_value", [True, "0.4", float("nan"), float("inf"), 10**10000])
+def test_monthly_feature_maps_reject_coerced_or_non_finite_values(bad_value):
+    with pytest.raises(ValidationError):
+        MonthlyCropFeatures(
+            month=1,
+            year=2025,
+            values={"ndvi": bad_value},
+            valid_observation_count=1,
+        )
+    with pytest.raises(ValidationError):
+        MonthlyCropFeatures(
+            month=1,
+            year=2025,
+            values={},
+            presto_bands={"b04_dn": bad_value},
+            valid_observation_count=1,
+        )
+
+
+def test_dynamic_world_class_rejects_boolean_and_numeric_string():
+    for bad_value in (True, "4", 4.0):
+        with pytest.raises(ValidationError):
+            MonthlyCropFeatures(
+                month=1,
+                year=2025,
+                values={},
+                valid_observation_count=1,
+                dynamic_world_class=bad_value,
+            )
