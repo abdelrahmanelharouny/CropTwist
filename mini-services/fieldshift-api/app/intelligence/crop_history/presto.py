@@ -80,12 +80,12 @@ def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size:
     from app.intelligence.crop_history.presto_inputs import PRESTO_BANDS
 
     groups = (
-        ("S1", ("vv", "vh")),
-        ("S2_RGB", ("b02", "b03", "b04")),
-        ("S2_Red_Edge", ("b05", "b06", "b07")),
-        ("S2_NIR_10m", ("b08",)),
-        ("S2_NIR_20m", ("b8a",)),
-        ("S2_SWIR", ("b11", "b12")),
+        ("S1", ("vv_db", "vh_db")),
+        ("S2_RGB", ("b02_dn", "b03_dn", "b04_dn")),
+        ("S2_Red_Edge", ("b05_dn", "b06_dn", "b07_dn")),
+        ("S2_NIR_10m", ("b08_dn",)),
+        ("S2_NIR_20m", ("b8a_dn",)),
+        ("S2_SWIR", ("b11_dn", "b12_dn")),
         ("ERA5", ("temperature_2m_k", "total_precipitation_m")),
         ("NDVI", ("ndvi",)),
     )
