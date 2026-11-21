@@ -73,32 +73,67 @@ def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size:
     from app.intelligence.crop_history.presto_inputs import build_presto_input
 
     prepared = [build_presto_input(record) for record in records]
-    outputs: list[list[float]] = []
+    # TorchGeo's Presto encoder compacts masked tokens with a reshape, so every
+    # sample in a tensor batch must have the same number of valid tokens.
+    # Bucket by valid-token count before batching to avoid shape-dependent
+    # failures when fields have different cloud/missing-modality patterns.
+    from app.intelligence.crop_history.presto_inputs import PRESTO_BANDS
+
+    groups = (
+        ("S1", ("vv", "vh")),
+        ("S2_RGB", ("b02", "b03", "b04")),
+        ("S2_Red_Edge", ("b05", "b06", "b07")),
+        ("S2_NIR_10m", ("b08",)),
+        ("S2_NIR_20m", ("b8a",)),
+        ("S2_SWIR", ("b11", "b12")),
+        ("ERA5", ("temperature_2m_k", "total_precipitation_m")),
+        ("NDVI", ("ndvi",)),
+    )
+    channel_index = {name: index for index, name in enumerate(PRESTO_BANDS)}
+    ndvi_index = len(PRESTO_BANDS)
+    buckets: dict[int, list[int]] = {}
+    for index, item in enumerate(prepared):
+        mask_array = item["mask"][0]
+        valid_tokens = int((item["dynamic_world"][0] != 9).sum())
+        for _, channels in groups:
+            indices = [ndvi_index if name == "ndvi" else channel_index[name] for name in channels]
+            valid_tokens += sum(1 for month_index in range(12) if not mask_array[month_index, indices].any())
+        srtm_indices = [channel_index["elevation_m"], channel_index["slope_degrees"]]
+        if not mask_array[0, srtm_indices].any():
+            valid_tokens += 1
+        buckets.setdefault(valid_tokens, []).append(index)
+
+    outputs: list[list[float] | None] = [None] * len(prepared)
     device = next(bundle.encoder.parameters()).device
-    for start in range(0, len(prepared), batch_size):
-        batch = prepared[start : start + batch_size]
-        x = torch.from_numpy(np.concatenate([item["x"] for item in batch], axis=0)).to(device)
-        mask = torch.from_numpy(np.concatenate([item["mask"] for item in batch], axis=0)).to(device)
-        dynamic_world = torch.from_numpy(
-            np.concatenate([item["dynamic_world"] for item in batch], axis=0)
-        ).long().to(device)
-        latlons = torch.from_numpy(
-            np.concatenate([item["latlons"] for item in batch], axis=0)
-        ).to(device)
-        months = torch.tensor([item["month"] for item in batch], dtype=torch.long, device=device)
-        with torch.inference_mode():
-            tokens, _, _ = bundle.encoder(
-                x=x,
-                dynamic_world=dynamic_world,
-                latlons=latlons,
-                mask=mask,
-                month=months,
-            )
-            embeddings = bundle.pool_norm(tokens.mean(dim=1))
-        if embeddings.ndim != 2 or embeddings.shape[0] != len(batch):
-            raise RuntimeError("Presto encoder returned an invalid embedding shape")
-        values = embeddings.detach().cpu().float().numpy()
-        if not np.isfinite(values).all():
-            raise RuntimeError("Presto encoder returned non-finite embeddings")
-        outputs.extend(values.tolist())
-    return outputs
+    for indices in buckets.values():
+        for start in range(0, len(indices), batch_size):
+            batch_indices = indices[start : start + batch_size]
+            batch = [prepared[index] for index in batch_indices]
+            x = torch.from_numpy(np.concatenate([item["x"] for item in batch], axis=0)).to(device)
+            mask = torch.from_numpy(np.concatenate([item["mask"] for item in batch], axis=0)).to(device)
+            dynamic_world = torch.from_numpy(
+                np.concatenate([item["dynamic_world"] for item in batch], axis=0)
+            ).long().to(device)
+            latlons = torch.from_numpy(
+                np.concatenate([item["latlons"] for item in batch], axis=0)
+            ).to(device)
+            months = torch.tensor([item["month"] for item in batch], dtype=torch.long, device=device)
+            with torch.inference_mode():
+                tokens, _, _ = bundle.encoder(
+                    x=x,
+                    dynamic_world=dynamic_world,
+                    latlons=latlons,
+                    mask=mask,
+                    month=months,
+                )
+                embeddings = bundle.pool_norm(tokens.mean(dim=1))
+            if embeddings.ndim != 2 or embeddings.shape[0] != len(batch):
+                raise RuntimeError("Presto encoder returned an invalid embedding shape")
+            values = embeddings.detach().cpu().float().numpy()
+            if not np.isfinite(values).all():
+                raise RuntimeError("Presto encoder returned non-finite embeddings")
+            for original_index, vector in zip(batch_indices, values, strict=True):
+                outputs[original_index] = vector.tolist()
+    if any(vector is None for vector in outputs):
+        raise RuntimeError("Presto inference omitted one or more input records")
+    return [vector for vector in outputs if vector is not None]
