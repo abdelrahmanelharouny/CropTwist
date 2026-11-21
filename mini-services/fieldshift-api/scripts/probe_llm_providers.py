@@ -30,7 +30,11 @@ def main() -> int:
     names = args.providers or ["gemini", "groq", "openrouter"]
     results = asyncio.run(_run(names))
     print(json.dumps(results, indent=2, sort_keys=True))
-    return 0 if all(item["status"] in ("live_verified", "not_configured") for item in results) else 1
+    if any(item["status"] not in ("live_verified", "not_configured") for item in results):
+        return 1
+    if not any(item["status"] == "live_verified" for item in results):
+        return 2
+    return 0
 
 
 if __name__ == "__main__":
