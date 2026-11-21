@@ -24,6 +24,7 @@ The implementation follows FAO's official [WaPOR v3 API tutorial](https://github
 - Raw raster values are always retained. Scale and unit precedence is: API raster metadata, GeoTIFF band tags, then the documented WaPOR v3 product specification. If either unit or scale remains unknown, physical-value summaries remain `null` and only raw statistics are exposed.
 - Scaled mean/median are reported only when both a documented unit and scale factor are available; the raw mean/median remain alongside them for auditability.
 - The scale/unit reference is [Digital Earth Africa's WaPOR v3 specification](https://docs.digitalearthafrica.org/en/latest/data_specs/WaPOR_specs.html), which documents units and scale factors per L1/L2 mapset.
+- The same specification states the data is provided free of charge under **CC BY-SA 4.0**. The license is carried in each returned raster record and must be retained in derived-data attribution.
 - Do not map WaPOR AETI, transpiration or relative soil moisture to a CropTwist canonical variable until units, scale, temporal support and nodata semantics are confirmed from the live product metadata / technical documentation.
 - WaPOR is satellite-derived water-productivity evidence, not independent field-yield ground truth.
 - Level 1 RET is approximately 30 km, not 300 m. Egypt's useful national Level 2 layers are 100 m.
