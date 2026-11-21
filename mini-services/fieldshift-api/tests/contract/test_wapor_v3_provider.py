@@ -177,7 +177,7 @@ def test_field_window_rejects_untrusted_raster_authority_before_io(monkeypatch, 
         )
 
 
-def test_invalid_scale_offset_and_unit_fall_back_to_documented_metadata(monkeypatch):
+def test_conflicting_scale_unit_and_offset_withhold_scaled_values(monkeypatch):
     class Reading:
         arrays = {"wapor": np.array([[2.0]])}
         crs = "EPSG:32636"
@@ -217,7 +217,7 @@ def test_invalid_scale_offset_and_unit_fall_back_to_documented_metadata(monkeypa
     # Conflicting upstream scale/unit metadata is not promoted to canonical
     # physical values; only the raw raster statistics remain trustworthy.
     assert result.scale_factor is None
-    assert result.offset == 0.0
+    assert result.offset is None
     assert result.unit is None
     assert result.scaled_mean is None
 
