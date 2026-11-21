@@ -290,17 +290,29 @@ class WaPORV3Client:
             raster_metadata.get("scale_factor"),
             product.scale_factor,
         )
-        scale = next(
+        reported_scale = next(
             (float(value) for value in scale_candidates if finite_number(value) and float(value) > 0),
             None,
         )
+        # The versioned product specification is the canonical authority.
+        # Upstream raster metadata is useful for corroboration, but a conflicting
+        # scale must never silently redefine the physical value.
+        scale = (
+            product.scale_factor
+            if product.scale_factor is not None
+            and (reported_scale is None or math.isclose(reported_scale, product.scale_factor, rel_tol=1e-9, abs_tol=1e-12))
+            else None
+        )
         offset_candidates = (raster.get("offset"), raster_metadata.get("offset"))
-        offset = next(
+        reported_offset = next(
             (float(value) for value in offset_candidates if finite_number(value)),
             None,
         )
-        unit_candidates = (raster.get("unit"), raster_metadata.get("unit"), product.unit)
-        unit = next(
+        # The published WaPOR product registry specifies multiplicative scaling
+        # only. A non-zero raster offset conflicts with that contract.
+        offset = 0.0 if reported_offset in (None, 0.0) else None
+        unit_candidates = (raster.get("unit"), raster_metadata.get("unit"))
+        reported_unit = next(
             (
                 value.strip()
                 for value in unit_candidates
@@ -310,10 +322,15 @@ class WaPORV3Client:
             ),
             None,
         )
-        # WaPOR's product registry publishes multiplicative scale factors and
-        # no additive offset; absent offset therefore means the documented 0.
-        if scale is not None and offset is None and unit is not None:
-            offset = 0.0
+        # Do not let a conflicting API/GeoTIFF unit leak into canonical data.
+        # If metadata disagrees with the product specification, keep raw
+        # statistics and withhold scaled values instead of guessing a conversion.
+        unit = (
+            product.unit
+            if product.unit is not None
+            and (reported_unit is None or reported_unit.casefold() == product.unit.casefold())
+            else None
+        )
         scaled_mean = mean * scale + offset if mean is not None and scale is not None and offset is not None and unit is not None else None
         scaled_median = median * scale + offset if median is not None and scale is not None and offset is not None and unit is not None else None
         return WaPORRasterWindow(
