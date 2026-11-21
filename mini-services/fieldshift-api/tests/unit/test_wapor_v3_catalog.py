@@ -85,7 +85,7 @@ def test_l1_interception_unit_conflict_withholds_canonical_physical_unit():
 
 
 def test_wapor_raster_catalog_requires_exact_product_period_and_deduplicates(monkeypatch):
-    from app.data_platform.providers.wapor_v3 import WaPORV3Client
+    from app.data_platform.providers.wapor_v3 import WaPORProviderError, WaPORV3Client
 
     items = [
         {
@@ -107,5 +107,5 @@ def test_wapor_raster_catalog_requires_exact_product_period_and_deduplicates(mon
     assert [item["period_code"] for item in rasters] == ["2025-01-D1"]
 
     monkeypatch.setattr(client, "_collect", lambda _: [items[0], items[0]])
-    with pytest.raises(Exception, match="duplicate raster identifier"):
+    with pytest.raises(WaPORProviderError, match="duplicate raster identifier"):
         client.list_rasters("L2-AETI-D")
