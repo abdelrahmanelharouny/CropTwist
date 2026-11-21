@@ -85,3 +85,9 @@ def test_presto_input_refuses_records_outside_12_month_window():
     )
     with pytest.raises(ValueError, match="12-month Presto window"):
         build_presto_input(record)
+
+def test_presto_input_rejects_physical_reflectance_in_dn_field():
+    record = _record()
+    record.months[0].presto_bands["b04_dn"] = 0.35
+    with pytest.raises(ValueError, match="raw scaled DN"):
+        build_presto_input(record)
