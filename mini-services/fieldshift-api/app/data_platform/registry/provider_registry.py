@@ -35,6 +35,11 @@ from app.data_platform.providers.satellite_sim.provider import SatelliteSimProvi
 from app.data_platform.providers.sentinel2.provider import Sentinel2StacProvider
 from app.data_platform.providers.soilgrids.provider import SoilGridsProvider, health_probe as sg_probe
 from app.data_platform.providers.synthetic.provider import SyntheticProvider
+from app.data_platform.providers.wapor_v3 import (
+    WAPOR_EGYPT_L2_VARIABLE_MAP,
+    WaPORV3Provider,
+    wapor_v3_health_probe,
+)
 
 
 def _sentinel2_probe() -> dict[str, Any]:
@@ -392,6 +397,33 @@ def get_provider_registry() -> ProviderRegistry:
                 ),
             },
             probe=_nasa_hls_probe,
+        )
+
+        # ------------------------------------------------ FAO WaPOR v3
+        # Canonical Egypt Level-2 dekadal products (100 m); discovery and
+        # raster reads are real-data only and remain optional until live checks.
+        wapor_v3 = WaPORV3Provider()
+        registry.register(
+            wapor_v3,
+            kind="api_raster",
+            status="optional",
+            details={
+                "is_synthetic": False,
+                "variables": wapor_v3.supported_variables(),
+                "products": sorted(set(WAPOR_EGYPT_L2_VARIABLE_MAP.values())),
+                "country_codes": ["EGY"],
+                "native_resolution_m": 100,
+                "temporal_support": "dekadal",
+                "license": "CC BY-SA 4.0",
+                "workflow": "EnvironmentalDataProvider.fetch_observations (Egypt Level-2)",
+                "note": (
+                    "FAO WaPOR v3 Egypt Level-2 water-productivity estimates. "
+                    "Relative soil moisture is not volumetric soil moisture; "
+                    "AETI is not reference ET0. Level-1 coarse and Level-3 pilot "
+                    "products are not included in the canonical adapter."
+                ),
+            },
+            probe=wapor_v3_health_probe,
         )
 
         # ------------------------------------------------ P2.B forecast
