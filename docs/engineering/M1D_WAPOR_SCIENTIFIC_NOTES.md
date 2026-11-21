@@ -12,6 +12,10 @@
 - Egypt Level-2 adapter currently exposes only the six registered L2 dekadal variables. It does not claim Level-3 pilot coverage or Level-1 global products as parcel-resolution measurements.
 - Product scale factors are variable-specific. AETI/E/T/I use 0.1 in the published DE Africa specification; NPP and relative soil moisture use 0.001. Do not share one scale factor across all products.
 
+## Level-2 relative soil-moisture availability gate
+
+The DE Africa WaPOR v3 specification lists `L2-RSM-D`NaN`L2-RSM-D` and a real Egyptian raster can be read. If the live catalogue does not return it, the provider must surface an unavailable product warning rather than infer or synthesize the layer.
+
 ## Conflicting L1-I-D unit metadata
 
 The current Digital Earth Africa WaPOR specification lists `L1-I-D` as dekadal but labels its unit `mm/year`. The FAO Google Earth Engine collection description says `L1-I-D` is a dekadal average daily interception value in `mm/day`. These statements conflict.
