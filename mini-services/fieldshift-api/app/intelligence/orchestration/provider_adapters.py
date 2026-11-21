@@ -947,8 +947,9 @@ class OllamaProvider(_HTTPProvider):
         schema: dict[str, Any] | None,
         stream: bool,
     ) -> dict[str, Any]:
-        if not messages or any(
-            message.get("role") not in ("system", "user", "assistant")
+        if not isinstance(messages, list) or not messages or any(
+            not isinstance(message, dict)
+            or message.get("role") not in ("system", "user", "assistant")
             or not isinstance(message.get("content"), str)
             for message in messages
         ):
