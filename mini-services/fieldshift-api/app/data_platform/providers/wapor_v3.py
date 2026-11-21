@@ -296,7 +296,8 @@ class WaPORV3Client:
             if finite_number(value) and float(value) > 0
         ]
         scales_consistent = (
-            len(valid_scales) == len(present_scales)
+            product.scale_factor is not None
+            and len(valid_scales) == len(present_scales)
             and all(
                 math.isclose(value, product.scale_factor, rel_tol=1e-9, abs_tol=1e-12)
                 for value in valid_scales
