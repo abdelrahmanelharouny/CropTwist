@@ -1,11 +1,13 @@
-# Local multilingual embedding warmup
+# Local multilingual E5 embedding warmup
 
-The local FastEmbed model is the Qdrant quantized ONNX variant of
-`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384-D,
-~50 languages, 512-token truncation, Apache-2.0, approximately 0.22 GB in
-FastEmbed 0.7.4). It is loaded lazily and downloaded to the configured cache
-on first use. For predictable API latency, run this operator command
-from `mini-services/fieldshift-api` after setting
+The reviewed local model is `intfloat/multilingual-e5-small` (384-D, MIT).
+FastEmbed 0.7.4 loads the ONNX export from a pinned Hugging Face revision
+(`ffdcc22`); the 470 MB `onnx/model.onnx` artifact must match SHA-256
+`ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665`
+before ONNX Runtime is initialized. The wrapper applies the E5 task contract:
+`passage: ` for document chunks and `query: ` for user queries.
+
+Run from `mini-services/fieldshift-api` after setting
 `CROPTWIST_AI_KNOWLEDGE_EMBEDDING_ENABLED=true`:
 
 ```bash
@@ -13,11 +15,10 @@ python scripts/warmup_local_embeddings.py
 ```
 
 The script embeds two fixed public test strings (English and Arabic), checks
-vector count/dimensions/finiteness, and prints only sanitized metadata. It
-does not read any CropTwist knowledge document or field record.
+vector count/dimensions/finiteness, and prints sanitized metadata only. It
+does not read CropTwist knowledge documents or field records.
 
-The default cache directory is FastEmbed's own model cache unless
-`CROPTWIST_AI_KNOWLEDGE_EMBEDDING_CACHE_DIR` is set. Use persistent disk if the hosting
-platform discards container files between restarts; otherwise the model may
-need to be downloaded again. Do not enable document/query embedding until the
-warmup succeeds and the retrieval benchmark passes.
+The default cache directory is FastEmbed's cache unless
+`CROPTWIST_AI_KNOWLEDGE_EMBEDDING_CACHE_DIR` is set. Use persistent disk if
+the hosting platform discards container files between restarts. Keep semantic
+retrieval disabled until warmup and the judged retrieval benchmark pass.
