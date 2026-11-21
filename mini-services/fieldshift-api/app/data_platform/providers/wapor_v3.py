@@ -205,7 +205,7 @@ class WaPORV3Client:
         geometry_geojson: dict[str, Any],
         max_window_mb: float = 128.0,
     ) -> WaPORRasterWindow:
-        """Read only the requested field window from an official FAO COG URL."""
+        """Read only the requested field window from an official FAO tiled GeoTIFF URL."""
         import numpy as np
 
         from app.geospatial.preprocessing import field_mask_for_window, read_scene_window
@@ -225,7 +225,7 @@ class WaPORV3Client:
             or parsed.username
             or parsed.password
         ):
-            raise ValueError("raster must be a catalogue record with a trusted FAO COG URL")
+            raise ValueError("raster must be a catalogue record with a trusted FAO GeoTIFF URL")
         try:
             raster_metadata = _read_raster_metadata(download_url)
             if not raster_metadata.get("is_tiled"):
