@@ -109,3 +109,38 @@ def test_wapor_raster_catalog_requires_exact_product_period_and_deduplicates(mon
     monkeypatch.setattr(client, "_collect", lambda _: [items[0], items[0]])
     with pytest.raises(WaPORProviderError, match="duplicate raster identifier"):
         client.list_rasters("L2-AETI-D")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://storage.googleapis.com/fao-gismgr-wapor-3-data/a.tif",
+        "https://storage.googleapis.com.evil.example/fao-gismgr-wapor-3-data/a.tif",
+        "https://storage.googleapis.com/attacker-bucket/a.tif",
+        "http://storage.googleapis.com/fao-gismgr-wapor-3-data/a.tif",
+        "https://user@storage.googleapis.com/fao-gismgr-wapor-3-data/a.tif",
+        "https://storage.googleapis.com:444/fao-gismgr-wapor-3-data/a.tif",
+        "https://storage.googleapis.com:invalid/fao-gismgr-wapor-3-data/a.tif",
+        "https://storage.googleapis.com/fao-gismgr-wapor-3-data/",
+    ],
+)
+def test_wapor_raster_url_is_restricted_to_official_bucket(url):
+    from app.data_platform.providers.wapor_v3 import _safe_raster_url
+
+    assert _safe_raster_url(url) is (url == "https://storage.googleapis.com/fao-gismgr-wapor-3-data/a.tif")
+
+
+def test_wapor_field_window_rejects_catalogue_record_with_mismatched_period():
+    from app.data_platform.providers.wapor_v3 import WaPORV3Client
+
+    client = WaPORV3Client()
+    with pytest.raises(ValueError, match="matching period"):
+        client.read_field_window(
+            mapset_code="L2-AETI-D",
+            raster={
+                "code": "WAPOR-3.L2-AETI-D.2025-01-D1",
+                "period_code": "2025-01-D2",
+                "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/a.tif",
+            },
+            geometry_geojson={"type": "Polygon", "coordinates": []},
+        )
