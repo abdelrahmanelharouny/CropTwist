@@ -91,3 +91,45 @@ def test_ranking_metrics_accept_list_relevance_judgements():
         relevant_document_ids={"q": ["d1"]},
     )
     assert result["metrics"]["recall@1"] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("batch_size", [True, 1.5, "2", 0, 33])
+def test_embedding_provider_benchmark_rejects_invalid_batch_size(batch_size):
+    class Provider:
+        name = "fake"
+        model = "fake-model"
+
+    with pytest.raises(ValueError, match="corpus or batch size"):
+        asyncio.run(evaluate_embedding_provider(
+            Provider(),
+            documents=[{"id": "d1", "text": "document"}],
+            queries=[{"id": "q1", "text": "query", "relevant_document_ids": ["d1"]}],
+            batch_size=batch_size,
+        ))
+
+
+@pytest.mark.parametrize(
+    "documents,queries",
+    [
+        ([{"id": "d1", "text": "doc"}, {"id": "d1", "text": "duplicate"}],
+         [{"id": "q1", "text": "query", "relevant_document_ids": ["d1"]}]),
+        ([{"id": "d1", "text": "doc"}],
+         [{"id": "q1", "text": "query", "relevant_document_ids": ["missing"]}]),
+        ([{"id": "", "text": "doc"}],
+         [{"id": "q1", "text": "query", "relevant_document_ids": [""]}]),
+        ([{"id": "d1", "text": "doc"}],
+         [{"id": "q1", "text": "query", "relevant_document_ids": "d1"}]),
+    ],
+)
+def test_embedding_provider_benchmark_rejects_malformed_corpus(documents, queries):
+    class Provider:
+        name = "fake"
+        model = "fake-model"
+
+        async def embed(self, texts):
+            return [[1.0, 0.0] for _ in texts]
+
+    with pytest.raises(ValueError):
+        asyncio.run(evaluate_embedding_provider(
+            Provider(), documents=documents, queries=queries
+        ))
