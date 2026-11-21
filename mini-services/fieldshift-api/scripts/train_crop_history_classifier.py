@@ -73,8 +73,8 @@ def _evaluate_fold(rows: list[dict], train_idx: list[int], test_idx: list[int], 
     fit_idx, calibration_idx = next(splitter.split(X_train, y_train, groups=groups))
     X_fit, y_fit = X_train[fit_idx], y_train[fit_idx]
     X_cal, y_cal = X_train[calibration_idx], y_train[calibration_idx]
-    classes = sorted(set(y_fit))
-    if set(y_train) != set(classes) or not set(y_test) <= set(classes):
+    fit_classes = set(y_fit)
+    if set(y_train) != fit_classes or not set(y_test) <= fit_classes:
         raise ValueError("grouped fit partition does not cover all train/test crop classes")
 
     model = CatBoostClassifier(
@@ -83,6 +83,7 @@ def _evaluate_fold(rows: list[dict], train_idx: list[int], test_idx: list[int], 
         verbose=False, thread_count=2, allow_writing_files=False,
     )
     model.fit(X_fit, y_fit)
+    classes = [str(value) for value in model.classes_]
     cal_logits = np.asarray(model.predict(X_cal, prediction_type="RawFormulaVal"), dtype=np.float64)
     test_logits = np.asarray(model.predict(X_test, prediction_type="RawFormulaVal"), dtype=np.float64)
 
