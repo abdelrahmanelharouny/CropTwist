@@ -252,19 +252,19 @@ class Sentinel2StacProvider:
                 "Sentinel-2 STAC page size must be a positive integer.",
                 details=[{"field": "limit", "reason": "expected a positive integer"}],
             )
-        if isinstance(max_cloud_cover, bool):
+        if isinstance(max_cloud_cover, bool) or not isinstance(max_cloud_cover, (int, float)):
             raise ProviderRequestError(
-                "Sentinel-2 maximum cloud cover must be numeric.",
-                details=[{"field": "max_cloud_cover", "reason": "boolean is not a valid number"}],
+                "Sentinel-2 maximum cloud cover must be a finite number.",
+                details=[{"field": "max_cloud_cover", "reason": "expected a numeric value, not a boolean or string"}],
             )
         try:
             cloud_cover = float(max_cloud_cover)
-        except (TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError):
             raise ProviderRequestError(
-                "Sentinel-2 maximum cloud cover must be numeric.",
-                details=[{"field": "max_cloud_cover", "reason": "expected a number"}],
-            ) from exc
-        if not 0.0 <= cloud_cover <= 100.0:
+                "Sentinel-2 maximum cloud cover must be a finite number.",
+                details=[{"field": "max_cloud_cover", "reason": "value is not representable as a finite number"}],
+            ) from None
+        if not math.isfinite(cloud_cover) or not 0.0 <= cloud_cover <= 100.0:
             raise ProviderRequestError(
                 "Sentinel-2 maximum cloud cover must be between 0 and 100.",
                 details=[{"field": "max_cloud_cover", "reason": "outside supported range"}],
@@ -423,7 +423,9 @@ class Sentinel2StacProvider:
                 f"Variables not produced by this provider: {', '.join(unknown)}.",
                 details=[{"field": "variables", "reason": "sentinel2 produces vegetation indices only"}],
             )
-        max_cloud = float(options.get("max_cloud_cover", DEFAULT_MAX_CLOUD))
+        # Preserve the raw option so the strict validator can reject bools,
+        # strings and unrepresentable values instead of silently coercing them.
+        max_cloud = options.get("max_cloud_cover", DEFAULT_MAX_CLOUD)
         items = self.search_items(
             geometry_geojson=area_of_interest.geometry_geojson,
             start=start.astimezone(UTC),
