@@ -145,7 +145,7 @@ class WaPORV3Client:
                 "download_url": download_url,
                 "unit": item.get("unit") if isinstance(item.get("unit"), str) else None,
                 "scale_factor": item.get("scale") if isinstance(item.get("scale"), (int, float)) else None,
-                "period_code": raster_code.rsplit(".", 1)[-1],
+                "period_code": raster_code.split(".", 2)[-1],
                 "raw_metadata": {key: item[key] for key in ("unit", "scale", "startDate", "endDate") if key in item},
             })
         return result
