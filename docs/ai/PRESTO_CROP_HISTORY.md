@@ -59,3 +59,27 @@ independence of labels are verified.
   coverage and abstention. No random neighbouring-pixel split.
 - Benchmark CPU latency/memory and export to ONNX only after numerical parity
   against the upstream PyTorch encoder is demonstrated.
+
+## Crop classifier evaluation harness
+
+Once verified labels and Presto embeddings are assembled into a CSV with
+`field_id`, `farm_group_id`, `region_id`, `season_year`, `crop_code`,
+`label_source`, `label_license`, `valid_pixel_coverage` and
+`embedding_0..embedding_127`, run:
+
+```bash
+python scripts/train_crop_history_classifier.py ./egypt-presto-embeddings.csv
+```
+
+The script uses CatBoost on CPU and evaluates a strict leave-one-region-out
+plus latest-season holdout. It requires disjoint farm groups, class-complete
+training and calibration partitions, and source/license metadata for every
+label. Temperature scaling is fitted only on farm-disjoint calibration groups.
+The report includes macro-F1, balanced accuracy, multiclass Brier score, ECE,
+per-class F1 and abstention coverage/selective accuracy at a fixed 0.60
+confidence threshold.
+
+The script is an evaluation harness only: it does not save or promote a
+production classifier. A fold blocked for missing classes or insufficient
+independent farms is reported as blocked; it is never replaced by a random
+pixel split.
