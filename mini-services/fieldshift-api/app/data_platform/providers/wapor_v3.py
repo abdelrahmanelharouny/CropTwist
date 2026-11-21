@@ -18,6 +18,18 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
+from app.core.errors import InvalidDateRange, ProviderUnavailable, UnsupportedVariable
+from app.data_platform.contracts.observations import (
+    AreaOfInterest,
+    CanonicalObservation,
+    EvidenceClass,
+    ProviderFetchResult,
+    QualityStatus,
+    SourceProvenance,
+    SpatialSupportType,
+    TimeSupport,
+    validate_provider_request,
+)
 from app.data_platform.providers.wapor_v3_catalog import get_product
 
 API_ROOT = "https://data.apps.fao.org/gismgr/api/v2/catalog/workspaces/WAPOR-3/mapsets"
