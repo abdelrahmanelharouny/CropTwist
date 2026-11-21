@@ -5,7 +5,9 @@
 CropTwist can use a locally running Ollama instance for private field/farmer
 context. The default model is
 `qwen3:4b-instruct-2507-q4_K_M` (Qwen3-4B-Instruct-2507, Apache-2.0,
-approximately 2.5 GB in this quantization).
+approximately 2.5 GB in this quantization). The Ollama library currently
+lists manifest digest prefix `0edcdef34593`; record and verify the full digest
+on the target host before production rollout.
 
 The provider is **disabled by default**. Enabling it does not download model
 weights and does not make the hosted API run Ollama automatically. The API
