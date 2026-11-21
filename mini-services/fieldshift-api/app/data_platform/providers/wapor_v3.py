@@ -512,6 +512,7 @@ class WaPORV3Provider:
                         "scaled_median": window.scaled_median,
                         "scale_factor": window.scale_factor,
                         "offset": window.offset,
+                        "crs": window.crs,
                         "valid_pixel_count": window.valid_pixel_count,
                         "nodata_pixel_count": window.nodata_pixel_count,
                         "valid_pixel_fraction": (window.valid_pixel_count / total_pixels) if total_pixels else 0.0,
