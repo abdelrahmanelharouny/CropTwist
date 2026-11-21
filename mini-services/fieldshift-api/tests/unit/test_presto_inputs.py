@@ -9,6 +9,7 @@ from app.intelligence.crop_history.presto_inputs import (
     PRESTO_CHANNELS,
     build_presto_input,
 )
+from app.intelligence.crop_history.presto import _count_valid_encoder_tokens
 
 
 def _record():
@@ -132,3 +133,26 @@ def test_presto_input_rejects_overflowing_raw_band_values():
     record.months[0].presto_bands["b04_dn"] = 10**10000
     with pytest.raises(ValueError, match="finite numeric data"):
         build_presto_input(record)
+
+
+def test_presto_valid_token_count_matches_all_present_band_groups():
+    prepared = build_presto_input(_record())
+    # 8 EO groups (including derived NDVI), one Dynamic World token and
+    # one static SRTM token; the encoder adds its separate lat/lon token.
+    assert _count_valid_encoder_tokens(prepared) == 10
+
+
+def test_presto_valid_token_count_excludes_missing_groups_and_dynamic_world():
+    record = _record()
+    record.months = [
+        MonthlyCropFeatures(
+            month=1,
+            year=2025,
+            values={},
+            valid_observation_count=1,
+            presto_bands={"vv_db": -10.0, "vh_db": -20.0},
+            dynamic_world_class=None,
+        )
+    ]
+    prepared = build_presto_input(record)
+    assert _count_valid_encoder_tokens(prepared) == 1
