@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-DATA_DICTIONARY_VERSION = "2026.12.0-p2"
+DATA_DICTIONARY_VERSION = "2026.12.0-p3"
 
 
 class VariableDefinition(BaseModel):
@@ -176,6 +176,104 @@ VARIABLE_CATALOG: dict[str, VariableDefinition] = {
             unit="index",
             typical_time_support="instant",
             description="NDWI = (Green-NIR)/(Green+NIR); open-water/flood detection aid.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        # --- FAO WaPOR v3 Egypt Level-2 dekadal products ---
+        VariableDefinition(
+            code="actual_evapotranspiration_interception",
+            name="Actual evapotranspiration and interception (AETI)",
+            unit="mm/day",
+            typical_time_support="dekadal",
+            description="WaPOR AETI estimate; distinct from reference ET0 and field-measured evapotranspiration.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="evaporation",
+            name="Actual evaporation",
+            unit="mm/day",
+            typical_time_support="dekadal",
+            description="WaPOR actual evaporation estimate from the land surface.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="interception",
+            name="Canopy interception",
+            unit="mm/day",
+            typical_time_support="dekadal",
+            description="WaPOR precipitation intercepted by vegetation and evaporated from the canopy.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="transpiration",
+            name="Actual transpiration",
+            unit="mm/day",
+            typical_time_support="dekadal",
+            description="WaPOR plant transpiration estimate; not a direct crop water-use measurement.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="relative_soil_moisture",
+            name="Relative soil moisture",
+            unit="%",
+            typical_time_support="dekadal",
+            description="WaPOR relative soil-moisture indicator; not volumetric soil moisture (m3/m3).",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="net_primary_productivity",
+            name="Net primary productivity",
+            unit="gC/m2/day",
+            typical_time_support="dekadal",
+            description="WaPOR net primary productivity estimate; not crop yield.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        # --- FAO WaPOR v3 dekadal water-productivity variables ---
+        VariableDefinition(
+            code="actual_evapotranspiration_interception",
+            name="Actual evapotranspiration and interception (AETI)",
+            unit="mm/day",
+            typical_time_support="dekadal",
+            description="WaPOR v3 dekadal mean daily AETI estimate; modelled satellite product, not a field measurement.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="evaporation",
+            name="Evaporation",
+            unit="mm/day",
+            typical_time_support="dekadal",
+            description="WaPOR v3 dekadal mean daily evaporation estimate.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="transpiration",
+            name="Transpiration",
+            unit="mm/day",
+            typical_time_support="dekadal",
+            description="WaPOR v3 dekadal mean daily transpiration estimate.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="interception",
+            name="Canopy interception",
+            unit="mm/day",
+            typical_time_support="dekadal",
+            description="WaPOR v3 Level 2 dekadal mean daily interception estimate.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="relative_soil_moisture",
+            name="Relative soil moisture",
+            unit="%",
+            typical_time_support="dekadal",
+            description="WaPOR v3 relative soil-moisture estimate; not volumetric soil moisture.",
+            evidence_class_hint="satellite_derived_estimate",
+        ),
+        VariableDefinition(
+            code="net_primary_productivity",
+            name="Net primary productivity",
+            unit="gC/m2/day",
+            typical_time_support="dekadal",
+            description="WaPOR v3 dekadal mean daily net primary productivity estimate.",
             evidence_class_hint="satellite_derived_estimate",
         ),
     ]
