@@ -83,3 +83,21 @@ The script is an evaluation harness only: it does not save or promote a
 production classifier. A fold blocked for missing classes or insufficient
 independent farms is reported as blocked; it is never replaced by a random
 pixel split.
+## End-to-end embedding export
+
+The export command accepts one validated `CropHistoryRecord` JSON object per
+line. Labelled records must include a region, valid-pixel coverage, explicitly
+verified label source and license. Install the optional ML dependencies, then
+run from `mini-services/fieldshift-api`:
+
+```bash
+pip install -r requirements-ml.txt
+python scripts/export_presto_embeddings.py ./crop-history.jsonl ./presto-embeddings.csv
+python scripts/train_crop_history_classifier.py ./presto-embeddings.csv
+```
+
+The export is CPU-only, records the exact checkpoint and input-schema version,
+and never writes raw field observations into the classifier CSV. It fails
+closed for missing labels, license/source verification, region metadata or
+coverage. The CatBoost stage then applies the spatial-temporal holdout and
+calibration gates described above.
