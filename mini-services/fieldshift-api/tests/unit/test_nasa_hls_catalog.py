@@ -208,3 +208,20 @@ def test_parse_item_ignores_boolean_and_out_of_range_cloud_cover():
         assert record is not None
         assert record.cloud_cover_pct is None
         assert any("cloud cover ignored" in warning for warning in warnings)
+
+
+@pytest.mark.parametrize(
+    "item,expected_warning",
+    [
+        ({**L30_ITEM, "properties": []}, "malformed STAC properties"),
+        ({**L30_ITEM, "assets": []}, "malformed STAC assets"),
+        (
+            {**L30_ITEM, "properties": {**L30_ITEM["properties"], "datetime": "2024-07-07T16:45:37"}},
+            "timezone-naive acquisition timestamp",
+        ),
+    ],
+)
+def test_parse_item_skips_malformed_or_timezone_naive_metadata(item, expected_warning):
+    record, warnings = catalog.parse_stac_item(item)
+    assert record is None
+    assert any(expected_warning in warning for warning in warnings)
