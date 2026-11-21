@@ -219,7 +219,7 @@ class ProviderRegistry:
 provider_registry = ProviderRegistry()
 provider_registry.register(LegacyBridgeProvider())
 
-_DEFAULT_PROVIDER_NAMES = frozenset({"gemini", "groq", "openrouter"})
+_DEFAULT_PROVIDER_NAMES = frozenset({"ollama", "gemini", "groq", "openrouter"})
 _DEFAULT_PROVIDER_LOCK = Lock()
 _DEFAULT_PROVIDERS_LOADED = False
 
