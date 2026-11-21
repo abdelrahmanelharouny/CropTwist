@@ -433,16 +433,21 @@ def _validate_scene_record(scene_id: str, record: Any) -> None:
         )
 
     cloud_cover = record.get("cloud_cover_pct")
-    if cloud_cover is not None and (
-        isinstance(cloud_cover, bool)
-        or not isinstance(cloud_cover, (int, float))
-        or not math.isfinite(float(cloud_cover))
-        or not 0.0 <= float(cloud_cover) <= 100.0
-    ):
-        raise ProviderRequestError(
-            f"Scene record '{scene_id}' has invalid cloud-cover metadata.",
-            details=[{"field": "scene_records", "reason": "cloud_cover_pct must be between 0 and 100"}],
-        )
+    if cloud_cover is not None:
+        try:
+            valid_cloud_cover = (
+                not isinstance(cloud_cover, bool)
+                and isinstance(cloud_cover, (int, float))
+                and math.isfinite(float(cloud_cover))
+                and 0.0 <= float(cloud_cover) <= 100.0
+            )
+        except (OverflowError, ValueError):
+            valid_cloud_cover = False
+        if not valid_cloud_cover:
+            raise ProviderRequestError(
+                f"Scene record '{scene_id}' has invalid cloud-cover metadata.",
+                details=[{"field": "scene_records", "reason": "cloud_cover_pct must be between 0 and 100"}],
+            )
 
     assets = record.get("assets") or {}
     allowed_surfaces = {"red", "nir", "blue", "green", "swir1", "swir2", "fmask"}
