@@ -201,7 +201,7 @@ class WaPORV3Client:
             if not raster_code.startswith(expected_prefix):
                 continue
             period_code = raster_code[len(expected_prefix):]
-            if not re.fullmatch(r"\\d{4}-\\d{2}-D[1-3]", period_code):
+            if not re.fullmatch(r"\d{4}-\d{2}-D[1-3]", period_code):
                 continue
             if raster_code in seen_raster_codes:
                 raise WaPORProviderError("FAO API returned a duplicate raster identifier")
