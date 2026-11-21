@@ -239,6 +239,8 @@ class WaPORV3Client:
             raw = np.asarray(reading.arrays["wapor"], dtype="float64")
             valid = field_mask & np.isfinite(raw)
             values = raw[valid]
+        except WaPORProviderError:
+            raise
         except Exception:
             raise WaPORProviderError("FAO raster could not be read for the requested field") from None
         if values.size:
