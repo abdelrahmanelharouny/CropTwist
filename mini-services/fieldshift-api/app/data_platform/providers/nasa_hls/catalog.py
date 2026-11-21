@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -138,9 +139,19 @@ def parse_stac_item(item: dict[str, Any]) -> tuple[HlsSceneRecord | None, list[s
         return None, warnings
 
     cloud_cover = properties.get("eo:cloud_cover")
-    if cloud_cover is not None and not isinstance(cloud_cover, (int, float)):
-        warnings.append(f"Scene {scene_id}: non-numeric cloud cover ignored.")
-        cloud_cover = None
+    if cloud_cover is not None:
+        try:
+            valid_cloud_cover = (
+                not isinstance(cloud_cover, bool)
+                and isinstance(cloud_cover, (int, float))
+                and math.isfinite(float(cloud_cover))
+                and 0.0 <= float(cloud_cover) <= 100.0
+            )
+        except (OverflowError, ValueError):
+            valid_cloud_cover = False
+        if not valid_cloud_cover:
+            warnings.append(f"Scene {scene_id}: invalid cloud cover ignored.")
+            cloud_cover = None
 
     surface_assets = SURFACE_ASSETS_BY_COLLECTION[short_code]
     assets = item.get("assets") or {}
