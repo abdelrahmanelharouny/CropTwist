@@ -1,0 +1,5 @@
+# Optional ML-worker dependencies; intentionally excluded from the web API image.
+# TorchGeo exposes NASA Harvest Presto and its pretrained checkpoint.
+torch>=2.2,<3.0
+torchgeo>=0.7.2,<1.0
+scikit-learn>=1.4,<2.0
