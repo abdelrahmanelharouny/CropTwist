@@ -40,6 +40,7 @@ Honesty properties:
 """
 
 import logging
+import math
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -591,7 +592,7 @@ def _radiometry_for_scene(
     reading: Any,
     hrefs: dict[str, str],
 ) -> dict[str, dict[str, Any]]:
-    """Resolve per-band scale/offset from STAC, GeoTIFF tags, then baseline."""
+    """Resolve per-band scale/offset, rejecting malformed or conflicting metadata."""
     properties = item.get("properties") or {}
     raw_baseline = properties.get("processing:version") or properties.get("s2:processing_baseline")
     baseline_offset: float | None = None
@@ -599,6 +600,17 @@ def _radiometry_for_scene(
         match = re.match(r"^\s*(\d+(?:\.\d+)?)", str(raw_baseline))
         if match:
             baseline_offset = -0.1 if float(match.group(1)) >= 4.0 else 0.0
+
+    def finite_metadata(value: Any, field: str, *, positive: bool = False) -> float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"Sentinel-2 {field} metadata must be numeric")
+        try:
+            number = float(value)
+        except (OverflowError, ValueError):
+            raise ValueError(f"Sentinel-2 {field} metadata must be finite") from None
+        if not math.isfinite(number) or (positive and number <= 0):
+            raise ValueError(f"Sentinel-2 {field} metadata is outside its valid range")
+        return number
 
     radiometry: dict[str, dict[str, Any]] = {}
     for surface in hrefs:
@@ -608,22 +620,45 @@ def _radiometry_for_scene(
         band_metadata = bands[0] if isinstance(bands, list) and bands else (
             bands if isinstance(bands, dict) else {}
         )
+        if not isinstance(band_metadata, dict):
+            raise ValueError(f"band {band_name} has invalid STAC radiometry metadata")
         stac_scale = band_metadata.get("scale")
         stac_offset = band_metadata.get("offset")
         file_scale = reading.scale_values.get(surface, 1.0)
         file_offset = reading.offset_values.get(surface, 0.0)
 
+        explicit_file_scale = file_scale not in (None, 1.0)
+        explicit_file_offset = file_offset not in (None, 0.0)
+        checked_file_scale = (
+            finite_metadata(file_scale, f"{band_name} GeoTIFF scale", positive=True)
+            if explicit_file_scale else None
+        )
+        checked_file_offset = (
+            finite_metadata(file_offset, f"{band_name} GeoTIFF offset")
+            if explicit_file_offset else None
+        )
+
         if stac_scale is not None:
-            scale, scale_source = float(stac_scale), "stac_raster_bands"
-        elif file_scale not in (None, 1.0):
-            scale, scale_source = float(file_scale), "geotiff_scale"
+            scale = finite_metadata(stac_scale, f"{band_name} STAC scale", positive=True)
+            if checked_file_scale is not None and not math.isclose(
+                scale, checked_file_scale, rel_tol=1e-9, abs_tol=1e-12
+            ):
+                raise ValueError(f"band {band_name} STAC and GeoTIFF scale metadata conflict")
+            scale_source = "stac_raster_bands"
+        elif checked_file_scale is not None:
+            scale, scale_source = checked_file_scale, "geotiff_scale"
         else:
             scale, scale_source = SENTINEL2_L2A.scale, "sentinel2_default_scale"
 
         if stac_offset is not None:
-            offset, offset_source = float(stac_offset), "stac_raster_bands"
-        elif file_offset not in (None, 0.0):
-            offset, offset_source = float(file_offset), "geotiff_offset"
+            offset = finite_metadata(stac_offset, f"{band_name} STAC offset")
+            if checked_file_offset is not None and not math.isclose(
+                offset, checked_file_offset, rel_tol=1e-9, abs_tol=1e-12
+            ):
+                raise ValueError(f"band {band_name} STAC and GeoTIFF offset metadata conflict")
+            offset_source = "stac_raster_bands"
+        elif checked_file_offset is not None:
+            offset, offset_source = checked_file_offset, "geotiff_offset"
         elif baseline_offset is not None:
             offset, offset_source = baseline_offset, "processing_baseline"
         else:
