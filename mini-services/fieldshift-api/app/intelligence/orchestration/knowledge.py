@@ -82,6 +82,10 @@ class EmbeddingProviderRegistry:
 
 embedding_provider_registry = EmbeddingProviderRegistry()
 
+from app.intelligence.orchestration.embedding_adapters import register_local_embedding_provider
+
+register_local_embedding_provider(embedding_provider_registry)
+
 
 @dataclass(frozen=True)
 class KnowledgePassage:
@@ -388,6 +392,12 @@ async def embed_query(query: str, *, provider: EmbeddingProvider) -> list[float]
     if not isinstance(query, str) or not query.strip() or len(query) > 2_000:
         raise KnowledgeError("query text is outside the supported bound")
     try:
+        query_embedder = getattr(provider, "embed_query", None)
+        if callable(query_embedder):
+            vector = await asyncio.wait_for(
+                query_embedder(query.strip()), timeout=EMBEDDING_PROVIDER_TIMEOUT_SECONDS
+            )
+            return validate_embedding(vector)
         vectors = await asyncio.wait_for(
             provider.embed([query.strip()]), timeout=EMBEDDING_PROVIDER_TIMEOUT_SECONDS
         )
@@ -457,11 +467,23 @@ def search_knowledge(
     max_embedding_age: timedelta = MAX_EMBEDDING_AGE,
 ) -> list[KnowledgePassage]:
     """Exact cosine scan over fresh, same-model, same-tenant bounded candidates."""
+    if not isinstance(organization_id, UUID):
+        raise KnowledgeError("organization scope is required for knowledge retrieval")
     query = validate_embedding(query_embedding)
-    if not 1 <= top_k <= 20 or not 1 <= max_candidates <= MAX_SEARCH_CANDIDATES:
+    if (
+        isinstance(top_k, bool) or not isinstance(top_k, int) or not 1 <= top_k <= 20
+        or isinstance(max_candidates, bool) or not isinstance(max_candidates, int)
+        or not 1 <= max_candidates <= MAX_SEARCH_CANDIDATES
+    ):
         raise KnowledgeError("retrieval limits are outside the supported bound")
-    if not -1.0 <= min_similarity <= 1.0:
-        raise KnowledgeError("similarity threshold must be between -1 and 1")
+    similarity_is_finite = False
+    if isinstance(min_similarity, (int, float)) and not isinstance(min_similarity, bool):
+        try:
+            similarity_is_finite = math.isfinite(float(min_similarity))
+        except (OverflowError, ValueError):
+            similarity_is_finite = False
+    if not similarity_is_finite or not -1.0 <= min_similarity <= 1.0:
+        raise KnowledgeError("similarity threshold must be a finite number between -1 and 1")
     if (
         not isinstance(embedding_provider, str)
         or not embedding_provider.strip()
