@@ -30,6 +30,7 @@ def _window(**overrides):
         "offset": 0.0,
         "unit": "mm/day",
         "resolution_m": 100,
+        "crs": "EPSG:32636",
         "asset_layout": "COG",
         "overview_levels": (2, 4, 8),
         "license": "CC BY-SA 4.0",
@@ -82,6 +83,7 @@ def test_wapor_fetch_returns_canonical_dekadal_observation_with_provenance():
     assert observation.period_end.day == 10
     assert observation.evidence_class.value == "satellite_derived_estimate"
     assert observation.metadata["valid_pixel_fraction"] == pytest.approx(0.8)
+    assert observation.metadata["crs"] == "EPSG:32636"
     assert result.provenance.license_name == "CC BY-SA 4.0"
     assert result.coverage["rasters_seen"] == 1
     assert client.calls[-1][2].endswith("2025-01-D1")
