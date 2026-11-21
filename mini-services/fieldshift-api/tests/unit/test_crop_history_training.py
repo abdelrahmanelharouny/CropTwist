@@ -110,3 +110,20 @@ def test_training_metadata_rejects_numeric_strings_in_embeddings():
     rows[0]["embedding"][0] = "0.1"
     with pytest.raises(ValueError, match="non-finite or non-numeric"):
         validate_training_rows(rows)
+
+
+
+def test_training_metadata_rejects_integer_values_that_overflow_float_conversion():
+    rows = [
+        _row("f1", "farm1", "zankalon", 2023, "wheat"),
+        _row("f2", "farm2", "sidi_ghazi", 2023, "maize"),
+        _row("f3", "farm3", "mallawi", 2023, "clover"),
+    ]
+    rows[0]["valid_pixel_coverage"] = 10**10000
+    with pytest.raises(ValueError, match="numeric, finite"):
+        validate_training_rows(rows)
+
+    rows[0]["valid_pixel_coverage"] = 0.8
+    rows[0]["embedding"][0] = 10**10000
+    with pytest.raises(ValueError, match="non-finite or non-numeric"):
+        validate_training_rows(rows)
