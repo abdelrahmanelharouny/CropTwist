@@ -218,3 +218,52 @@ def test_invalid_scale_offset_and_unit_fall_back_to_documented_metadata(monkeypa
     assert result.offset == 0.0
     assert result.unit == "mm/dekad"
     assert result.scaled_mean == pytest.approx(0.4)
+
+
+def test_wapor_provider_rejects_naive_datetimes_before_provider_io():
+    from datetime import datetime
+    from app.core.errors import InvalidDateRange
+    from app.data_platform.contracts.observations import AreaOfInterest
+    from app.data_platform.providers.wapor_v3 import WaPORV3Provider
+
+    class NoIoClient:
+        def list_rasters(self, mapset_code):
+            raise AssertionError("invalid time range reached provider I/O")
+
+    with pytest.raises(InvalidDateRange, match="timezone-aware"):
+        WaPORV3Provider(client=NoIoClient()).fetch_observations(
+            area_of_interest=AreaOfInterest(
+                geometry_geojson={"type": "Polygon", "coordinates": [[[31, 30], [32, 30], [32, 31], [31, 31], [31, 30]]]}
+            ),
+            variables=["actual_evapotranspiration_interception"],
+            start=datetime(2025, 1, 1),
+            end=datetime(2025, 1, 10),
+        )
+
+
+def test_wapor_provider_bounds_raster_window_before_reading():
+    from datetime import UTC, datetime
+    from app.core.errors import ValidationFailed
+    from app.data_platform.contracts.observations import AreaOfInterest
+    from app.data_platform.providers.wapor_v3 import WaPORV3Provider
+
+    class FakeClient:
+        def list_rasters(self, mapset_code):
+            return [{
+                "code": f"WAPOR-3.{mapset_code}.2025-01-D1",
+                "period_code": "2025-01-D1",
+            }]
+
+        def read_field_window(self, **kwargs):
+            raise AssertionError("out-of-bounds window reached raster read")
+
+    with pytest.raises(ValidationFailed, match="between 1 and 256"):
+        WaPORV3Provider(client=FakeClient()).fetch_observations(
+            area_of_interest=AreaOfInterest(
+                geometry_geojson={"type": "Polygon", "coordinates": [[[31, 30], [32, 30], [32, 31], [31, 31], [31, 30]]]}
+            ),
+            variables=["actual_evapotranspiration_interception"],
+            start=datetime(2025, 1, 1, tzinfo=UTC),
+            end=datetime(2025, 1, 10, tzinfo=UTC),
+            options={"max_window_mb": 1024},
+        )
