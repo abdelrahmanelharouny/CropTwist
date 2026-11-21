@@ -280,18 +280,33 @@ class NasaHlsProvider:
                     "(obtained from satellite discovery).",
                     details=[{"field": "scene_records", "reason": "invalid shape"}],
                 )
+            # Validate keys and metadata before sorting or indexing untrusted
+            # caller-supplied dictionaries.
+            for key, record in scene_records.items():
+                _validate_scene_record(key, record)
+                acquired_at = datetime.fromisoformat(
+                    record["acquired_at"].replace("Z", "+00:00")
+                ).astimezone(UTC)
+                if not start.astimezone(UTC) <= acquired_at <= end.astimezone(UTC):
+                    raise ProviderRequestError(
+                        f"Scene record '{key}' is outside the requested time range.",
+                        details=[{"field": "scene_records", "reason": "acquired_at outside requested range"}],
+                    )
             if isinstance(scene_ids, list) and scene_ids:
+                if len(scene_ids) != len(set(scene_ids)):
+                    raise ProviderRequestError(
+                        "scene_ids must not contain duplicate identifiers.",
+                        details=[{"field": "scene_ids", "reason": "duplicate scene id"}],
+                    )
                 missing = [s for s in scene_ids if s not in scene_records]
                 if missing:
                     raise ProviderRequestError(
                         "scene_ids reference scenes without discovery metadata.",
                         details=[{"field": "scene_ids", "reason": f"missing records: {missing[:5]}"}],
                     )
-                ordered = [s for s in scene_ids if s in scene_records]
+                ordered = scene_ids
             else:
                 ordered = sorted(scene_records.keys())
-            for key, record in scene_records.items():
-                _validate_scene_record(key, record)
             return {k: scene_records[k] for k in ordered}
 
         if not isinstance(scene_ids, list) or not scene_ids:
