@@ -14,7 +14,7 @@
 
 ## Level-2 relative soil-moisture availability gate
 
-The DE Africa WaPOR v3 specification lists `L2-RSM-D`NaN`L2-RSM-D` and a real Egyptian raster can be read. If the live catalogue does not return it, the provider must surface an unavailable product warning rather than infer or synthesize the layer.
+The DE Africa WaPOR v3 specification lists `L2-RSM-D` and a real Egyptian raster can be read. If the live catalogue does not return it, the provider must surface an unavailable product warning rather than infer or synthesize the layer.
 
 ## Conflicting L1-I-D unit metadata
 
