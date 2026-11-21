@@ -6,10 +6,13 @@ returns or logs model output or provider exception bodies.
 """
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 from typing import Any
 
 from app.intelligence.orchestration.provider import provider_registry
+
+PROBE_TIMEOUT_SECONDS = 20
 
 _PROBE_MESSAGES = [
     {"role": "system", "content": "You are a connectivity probe. Do not reveal secrets."},
@@ -29,11 +32,14 @@ async def probe_provider(name: str) -> dict[str, Any]:
         return {"provider": provider.name, "model": getattr(provider, "model", None), "status": "not_configured"}
     started = perf_counter()
     try:
-        result = await provider.generate(
-            _PROBE_MESSAGES,
-            temperature=0,
-            max_tokens=16,
-            request_id="croptwist-live-provider-probe",
+        result = await asyncio.wait_for(
+            provider.generate(
+                _PROBE_MESSAGES,
+                temperature=0,
+                max_tokens=16,
+                request_id="croptwist-live-provider-probe",
+            ),
+            timeout=PROBE_TIMEOUT_SECONDS,
         )
     except Exception as exc:
         category = getattr(exc, "category", "provider_probe_failed")
