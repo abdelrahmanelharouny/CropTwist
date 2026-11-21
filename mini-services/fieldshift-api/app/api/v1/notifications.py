@@ -7,9 +7,8 @@ user-addressed; the visible set = org rows + rows addressed to the caller
 caller's OLDEST active organization (same deterministic convention the
 farms domain uses).
 
-Severity filtering is applied on top of the service query (the service does
-not expose a severity parameter); results stay exact because pages are
-fetched through the service until the filtered window is complete.
+Severity and category filters are applied in the service's SQL query so
+pagination and aggregate counts use one consistent, tenant-scoped result set.
 """
 
 import uuid
@@ -26,9 +25,6 @@ from app.domains.identity.service import get_principal
 from app.notifications import service as notifications_service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
-
-# Service query page size when paging through rows for severity filtering.
-_PAGE = 200
 
 
 # --------------------------------------------------------------- helpers
@@ -59,44 +55,6 @@ def _validate_severity(severity: str | None) -> str | None:
         )
     return severity
 
-
-def _list_with_severity(
-    db: Session,
-    principal: Any,
-    *,
-    organization_id: uuid.UUID,
-    unread_only: bool,
-    category: str | None,
-    severity: str,
-    limit: int,
-    offset: int,
-) -> tuple[list[Any], int, int]:
-    """Severity-filtered listing. Pages through the service (single source of
-    scoping truth) until `offset + limit` filtered rows are collected or the
-    underlying set is exhausted; totals are exact."""
-    collected: list[Any] = []
-    total_scanned = 0
-    safety_pages = 100  # hard cap: 100 * 200 = 20k rows scanned, then stop
-    while len(collected) < offset + limit and safety_pages > 0:
-        rows, _total, _unread = notifications_service.list_notifications(
-            db,
-            principal,
-            organization_id=organization_id,
-            unread_only=unread_only,
-            category=category,
-            limit=_PAGE,
-            offset=total_scanned,
-        )
-        if not rows:
-            break
-        collected.extend(r for r in rows if r.severity == severity)
-        total_scanned += len(rows)
-        safety_pages -= 1
-        if len(rows) < _PAGE:
-            break
-    total = len(collected)
-    unread = sum(1 for r in collected if r.read_at is None)
-    return collected[offset : offset + limit], total, unread
 
 
 # ------------------------------------------------------------ request models
@@ -129,27 +87,16 @@ def list_notifications(
     org_id = _resolve_org_id(principal, organization_id)
     severity = _validate_severity(severity)
     category = _validate_category(category or type_)
-    if severity is not None:
-        rows, total, unread = _list_with_severity(
-            db,
-            principal,
-            organization_id=org_id,
-            unread_only=unread_only,
-            category=category,
-            severity=severity,
-            limit=limit,
-            offset=offset,
-        )
-    else:
-        rows, total, unread = notifications_service.list_notifications(
-            db,
-            principal,
-            organization_id=org_id,
-            unread_only=unread_only,
-            category=category,
-            limit=limit,
-            offset=offset,
-        )
+    rows, total, unread = notifications_service.list_notifications(
+        db,
+        principal,
+        organization_id=org_id,
+        unread_only=unread_only,
+        category=category,
+        severity=severity,
+        limit=limit,
+        offset=offset,
+    )
     return {
         "items": [notifications_service.notification_payload(n) for n in rows],
         "total": total,
