@@ -392,6 +392,9 @@ def test_acquisition_full_lifecycle_ready(client, farm_with_field, monkeypatch):
     # Explicit scene targets were passed through to the provider.
     assert fetched["options"]["scene_ids"] == [scene_id]
     assert fetched["variables"] == ["ndvi"]
+    assert fetched["options"]["scene_records"][scene_id]["assets"]["fmask"].endswith(
+        ".Fmask.tif"
+    )
 
     # Re-acquiring a ready scene is rejected honestly.
     again = client.post(

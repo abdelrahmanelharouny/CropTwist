@@ -21,6 +21,8 @@ from tests.fixtures.raster_fixtures import (
     EXPECTED_STRESSED,
     EXPECTED_VEGETATED,
     FIXTURE_CRS,
+    FMASK_AOT_HIGH,
+    FMASK_RESERVED_BIT0,
     FMASK_WATER,
     fixture_field_geojson,
     write_fixture_scene,
@@ -96,6 +98,104 @@ class TestWindowedReading:
             )
 
 
+    def test_mixed_resolution_reflectance_and_qa_align_to_reference_grid(self, tmp_path):
+        """20 m SWIR/SCL assets must be warped by coordinates, not pixel offsets."""
+        from rasterio.transform import from_origin
+
+        crs = "EPSG:32636"
+        red_path = tmp_path / "red_10m.tif"
+        swir_path = tmp_path / "swir_20m.tif"
+        qa_path = tmp_path / "qa_20m.tif"
+        with rasterio.open(
+            red_path, "w", driver="GTiff", height=100, width=110, count=1,
+            dtype="float32", crs=crs, transform=from_origin(500000, 3800000, 10, 10),
+            nodata=-9999,
+        ) as dst:
+            dst.write(np.full((100, 110), 1000, dtype="float32"), 1)
+        with rasterio.open(
+            swir_path, "w", driver="GTiff", height=50, width=55, count=1,
+            dtype="float32", crs=crs, transform=from_origin(500000, 3800000, 20, 20),
+            nodata=-9999,
+        ) as dst:
+            dst.write(np.full((50, 55), 2000, dtype="float32"), 1)
+        qa = np.zeros((50, 55), dtype="uint8")
+        qa[20, 20] = 2
+        with rasterio.open(
+            qa_path, "w", driver="GTiff", height=50, width=55, count=1,
+            dtype="uint8", crs=crs, transform=from_origin(500000, 3800000, 20, 20),
+            nodata=255,
+        ) as dst:
+            dst.write(qa, 1)
+
+        reading = pre.read_scene_window(
+            assets={"red": str(red_path), "swir1": str(swir_path), "fmask": str(qa_path)},
+            surfaces=("red", "swir1"),
+            geometry_geojson=fixture_field_geojson(),
+            gdal_env={},
+            max_window_mb=64,
+        )
+        assert reading.arrays["red"].shape == reading.arrays["swir1"].shape
+        assert reading.arrays["red"].shape == reading.fmask.shape
+        assert reading.band_alignment["red"] == "native"
+        assert reading.band_alignment["swir1"] == "reprojected"
+        assert reading.band_alignment["fmask"] == "reprojected"
+        assert np.nanmean(reading.arrays["swir1"]) == pytest.approx(2000.0)
+        assert np.nanmean(reading.arrays["red"]) == pytest.approx(1000.0)
+        assert np.count_nonzero(reading.fmask == 2) >= 4
+
+    def test_southern_hemisphere_hls_negative_northing_is_not_reinterpreted(self, tmp_path):
+        """HLS S30 may label southern tiles with a north-UTM EPSG and negative Y."""
+        from pyproj import Transformer
+        from rasterio.transform import from_origin
+
+        crs = "EPSG:32636"
+        transform = from_origin(199000, -2700000, 30, 30)
+        assets = {}
+        for surface, value in (("red", 1200), ("nir", 4200)):
+            path = tmp_path / f"south_{surface}.tif"
+            with rasterio.open(
+                path, "w", driver="GTiff", height=40, width=40, count=1,
+                dtype="float32", crs=crs, transform=transform, nodata=-9999,
+            ) as dst:
+                dst.write(np.full((40, 40), value, dtype="float32"), 1)
+            assets[surface] = str(path)
+        fmask_path = tmp_path / "south_fmask.tif"
+        with rasterio.open(
+            fmask_path, "w", driver="GTiff", height=40, width=40, count=1,
+            dtype="uint8", crs=crs, transform=transform, nodata=255,
+        ) as dst:
+            dst.write(np.zeros((40, 40), dtype="uint8"), 1)
+        assets["fmask"] = str(fmask_path)
+
+        to_wgs84 = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+        corners = [
+            to_wgs84.transform(199150, -2700150),
+            to_wgs84.transform(200050, -2700150),
+            to_wgs84.transform(200050, -2701050),
+            to_wgs84.transform(199150, -2701050),
+            to_wgs84.transform(199150, -2700150),
+        ]
+        geometry = {"type": "Polygon", "coordinates": [[list(point) for point in corners]]}
+        reading = pre.read_scene_window(
+            assets=assets,
+            surfaces=("red", "nir"),
+            geometry_geojson=geometry,
+            gdal_env={},
+            max_window_mb=64,
+            nodata_fallbacks={"red": -9999, "nir": -9999, "fmask": 255},
+        )
+        field_mask = pre.field_mask_for_window(
+            geometry_geojson=geometry,
+            crs_string=reading.crs,
+            transform=reading.transform,
+            width=reading.width,
+            height=reading.height,
+        )
+        assert reading.crs == crs
+        assert reading.window_bounds[1] < 0
+        assert field_mask.any()
+        assert field_mask.sum() == reading.width * reading.height
+
 class TestIndexFormulas:
     def test_top_half_matches_documented_formula(self, clean_scene):
         geo = fixture_field_geojson()
@@ -105,7 +205,7 @@ class TestIndexFormulas:
             geometry_geojson=geo,
             indices=["ndvi", "evi", "savi", "ndmi", "ndwi", "bsi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         mask = pre.field_mask_for_window(
             geometry_geojson=geo,
@@ -130,7 +230,7 @@ class TestIndexFormulas:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         assert prov["reflectance_scale"] == 0.0001
         ndvi = products[0]
@@ -154,7 +254,7 @@ class TestFmaskMasking:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         p = products[0]
         # The 42-pixel cloud block and 24-pixel nodata patch are both invalid,
@@ -163,8 +263,9 @@ class TestFmaskMasking:
         assert (p.masked_pixels - p.valid_pixels) == 66
         fm = prov["fmask"]
         assert fm["cloud_pixels_in_window"] == 42
-        assert fm["shadow_pixels_in_window"] == 42  # cloud block also carries shadow+cirrus
-        assert fm["cirrus_pixels_in_window"] == 42
+        assert fm["shadow_pixels_in_window"] == 42
+        assert fm["adjacent_to_cloud_pixels_in_window"] == 42
+        assert fm["reserved_bit0_pixels_in_window"] == 0
 
     def test_nodata_never_treated_as_zero(self, cloud_scene):
         geo = fixture_field_geojson()
@@ -175,7 +276,7 @@ class TestFmaskMasking:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         p = products[0]
         arr = p.array
@@ -186,12 +287,13 @@ class TestFmaskMasking:
     def test_water_bit_recorded_not_excluded(self, tmp_path):
         """FMASK bit 5 (water) is recorded in provenance but NOT excluded."""
         assets = write_fixture_scene(tmp_path, scene_id="FIX.W1")
-        # set one pixel to water-only
+        # set one pixel to water-only and one to reserved bit 0
         import rasterio
 
         with rasterio.open(assets["fmask"], "r+") as src:
             fm = src.read(1)
             fm[10, 10] = FMASK_WATER
+            fm[11, 11] = FMASK_RESERVED_BIT0
             src.write(fm, 1)
         geo = fixture_field_geojson()
         reading = _read(assets, geo)
@@ -200,14 +302,34 @@ class TestFmaskMasking:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         assert prov["fmask"]["water_pixels_in_window"] == 1
-        # water pixel remains valid (water bit not in exclude mask)
+        assert prov["fmask"]["reserved_bit0_pixels_in_window"] == 1
+        # Water and reserved bit 0 remain valid; neither is an exclusion bit.
         p = products[0]
-        assert p.valid_pixels == p.masked_pixels - int(
-            (reading.fmask & 0b011011 != 0).sum()
+        assert p.valid_pixels == p.masked_pixels
+
+
+    def test_high_aerosol_pixels_are_excluded_and_counted(self, tmp_path):
+        assets = write_fixture_scene(tmp_path, scene_id="FIX.AOT")
+        with rasterio.open(assets["fmask"], "r+") as src:
+            fm = src.read(1)
+            fm[10, 10] = FMASK_AOT_HIGH
+            src.write(fm, 1)
+        geo = fixture_field_geojson()
+        reading = _read(assets, geo)
+        products, provenance = pre.derive_index_products(
+            reading=reading,
+            geometry_geojson=geo,
+            indices=["ndvi"],
+            reflectance_scale=0.0001,
+            fmask_exclude_mask=0b00011110,
         )
+        product = products[0]
+        assert product.valid_pixels == product.masked_pixels - 1
+        assert provenance["fmask"]["high_aerosol_pixels_in_window"] == 1
+        assert provenance["fmask"]["aot_level_counts"]["high"] == 1
 
 
 class TestValidPixelAccounting:
@@ -219,7 +341,7 @@ class TestValidPixelAccounting:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         p = products[0]
         assert p.valid_pixel_fraction == pytest.approx(p.valid_pixels / p.masked_pixels)
@@ -239,7 +361,7 @@ class TestValidPixelAccounting:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         p = products[0]
         assert p.valid_pixels == 0
@@ -256,7 +378,7 @@ class TestZones:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         zones = products[0].zone_summary
         assert zones["method"] == "value_terciles_rank"
@@ -286,7 +408,7 @@ class TestZones:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         assert products[0].zone_summary is None
 
@@ -300,7 +422,7 @@ class TestCogWriting:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         arr = products[0].array
         out = str(tmp_path / "ndvi.tif")
@@ -326,7 +448,7 @@ class TestPreviewPng:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         png = pre.render_preview_png(index_array=products[0].array, index_code="ndvi")
         assert png.startswith(b"\x89PNG\r\n\x1a\n")
@@ -340,7 +462,7 @@ class TestPreviewPng:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         arr = products[0].array
         png1 = pre.render_preview_png(index_array=arr, index_code="ndvi")
@@ -383,7 +505,7 @@ class TestSceneValidation:
         assert not result.ok
         assert any("not_an_index" in r for r in result.reasons)
 
-    def test_missing_fmask_warns_not_rejects(self, clean_scene):
+    def test_missing_fmask_is_rejected(self, clean_scene):
         assets = {k: v for k, v in clean_scene.items() if k != "fmask"}
         result = pre.validate_scene_for_processing(
             scene_record={"scene_id": "S", "assets": assets, "acquired_at": "2026-01-01T00:00:00Z"},
@@ -391,8 +513,8 @@ class TestSceneValidation:
             indices=["ndvi"],
             processing_version="v1",
         )
-        assert result.ok
-        assert any("fmask" in w for w in result.warnings)
+        assert not result.ok
+        assert any("fmask" in reason.lower() for reason in result.reasons)
 
     def test_checksum_honesty_note(self):
         """Validation records that source checksums are NOT faked."""
@@ -416,7 +538,7 @@ class TestProvenanceBlock:
             geometry_geojson=geo,
             indices=["ndvi"],
             reflectance_scale=0.0001,
-            fmask_exclude_mask=0b011011,
+            fmask_exclude_mask=0b00011110,
         )
         block = pre.product_provenance(
             product_code="HLSL30",
@@ -434,3 +556,16 @@ class TestProvenanceBlock:
         assert block["pipeline"]["read_mode"] == "windowed_range_read"
         assert block["pipeline"]["window"]["crs"] == FIXTURE_CRS
         assert "checksum" in block["source_checksum_note"]
+
+
+def test_derived_hls_products_refuse_missing_fmask(clean_scene):
+    reading = _read(clean_scene, fixture_field_geojson())
+    reading.fmask = None
+    with pytest.raises(ValueError, match="Fmask QA is required"):
+        pre.derive_index_products(
+            reading=reading,
+            geometry_geojson=fixture_field_geojson(),
+            indices=["ndvi"],
+            reflectance_scale=0.0001,
+            fmask_exclude_mask=0b00011110,
+        )
