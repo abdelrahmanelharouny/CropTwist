@@ -975,7 +975,12 @@ class OllamaProvider(_HTTPProvider):
         content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, str) or not content.strip():
             raise ProviderFailure("provider_empty_response", False)
-        if body.get("done") is False:
+        if body.get("done") is not True:
+            raise ProviderFailure("provider_incomplete_response", False)
+        done_reason = body.get("done_reason")
+        if done_reason == "length":
+            raise ProviderFailure("provider_output_truncated", False)
+        if done_reason not in (None, "stop"):
             raise ProviderFailure("provider_incomplete_response", False)
         return ProviderGeneration(
             content=content,
