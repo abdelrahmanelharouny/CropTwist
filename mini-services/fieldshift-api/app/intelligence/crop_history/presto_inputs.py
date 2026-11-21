@@ -89,16 +89,17 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
                 x[timestep, ndvi_index] = (nir - red) / denominator
                 mask[timestep, ndvi_index] = 0.0
 
-    # SRTM is static. The upstream encoder consumes its first temporal token;
-    # repeat it over the sequence so the input representation is unambiguous.
+    # SRTM is static. The upstream encoder consumes only the first temporal token.
     for name in ("elevation_m", "slope_degrees"):
         index = PRESTO_BANDS.index(name)
         valid_values = [x[t, index] for t in range(12) if mask[t, index] == 0]
         if valid_values:
             if max(valid_values) - min(valid_values) > 1e-5:
                 raise ValueError(f"static Presto channel {name} changes within a season")
-            x[:, index] = valid_values[0]
-            mask[:, index] = 0.0
+            x[0, index] = valid_values[0]
+            mask[0, index] = 0.0
+            x[1:, index] = 0.0
+            mask[1:, index] = 1.0
 
     if np.all(mask == 1.0) and np.all(dynamic_world == DYNAMIC_WORLD_MISSING):
         raise ValueError("Presto input contains no valid observations")
