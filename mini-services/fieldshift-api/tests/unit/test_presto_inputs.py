@@ -91,3 +91,11 @@ def test_presto_input_rejects_physical_reflectance_in_dn_field():
     record.months[0].presto_bands["b04_dn"] = 0.35
     with pytest.raises(ValueError, match="raw scaled DN"):
         build_presto_input(record)
+
+
+@pytest.mark.parametrize("band,value", [("vv_db", -50.1), ("vv_db", 1.1), ("vh_db", -50.1), ("vh_db", 1.1)])
+def test_presto_input_rejects_sentinel1_values_outside_upstream_normalization_range(band, value):
+    record = _record()
+    record.months[0].presto_bands[band] = value
+    with pytest.raises(ValueError, match="outside its expected source-unit range"):
+        build_presto_input(record)
