@@ -88,7 +88,14 @@ def encode_training_rows(
     bundle: Any,
     batch_size: int = 16,
 ) -> list[dict[str, Any]]:
-    if not records or len(records) > 4096 or not 1 <= batch_size <= 128:
+    if (
+        not isinstance(records, list)
+        or not records
+        or len(records) > 4096
+        or isinstance(batch_size, bool)
+        or not isinstance(batch_size, int)
+        or not 1 <= batch_size <= 128
+    ):
         raise ValueError("Presto dataset size or batch size is outside the supported bound")
     field_ids = [record.field_id for record in records]
     if len(field_ids) != len(set(field_ids)):
