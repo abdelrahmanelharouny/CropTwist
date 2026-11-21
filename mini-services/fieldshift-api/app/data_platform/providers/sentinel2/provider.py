@@ -251,6 +251,11 @@ class Sentinel2StacProvider:
                 "Sentinel-2 STAC page size must be a positive integer.",
                 details=[{"field": "limit", "reason": "expected a positive integer"}],
             )
+        if isinstance(max_cloud_cover, bool):
+            raise ProviderRequestError(
+                "Sentinel-2 maximum cloud cover must be numeric.",
+                details=[{"field": "max_cloud_cover", "reason": "boolean is not a valid number"}],
+            )
         try:
             cloud_cover = float(max_cloud_cover)
         except (TypeError, ValueError) as exc:
@@ -275,11 +280,18 @@ class Sentinel2StacProvider:
         }
         base_url = self._stac_base_url()
         origin = urlsplit(base_url)
-        if origin.scheme.lower() != "https" or not origin.hostname:
+        if origin.scheme.lower() != "https" or not origin.hostname or origin.username or origin.password:
             raise ProviderRequestError(
                 "Sentinel-2 STAC endpoint must use HTTPS.",
-                details=[{"field": "stac_base_url", "reason": "HTTPS endpoint required"}],
+                details=[{"field": "stac_base_url", "reason": "HTTPS endpoint without embedded credentials required"}],
             )
+        try:
+            origin_port = origin.port or 443
+        except ValueError as exc:
+            raise ProviderRequestError(
+                "Sentinel-2 STAC endpoint has an invalid port.",
+                details=[{"field": "stac_base_url", "reason": "invalid HTTPS port"}],
+            ) from exc
         headers = self._auth_headers()
         client = self._client or httpx
         next_request: tuple[str, str, dict[str, Any] | None] = (
@@ -290,11 +302,14 @@ class Sentinel2StacProvider:
         for _ in range(max_pages):
             method, url, request_body = next_request
             parsed = urlsplit(url)
+            try:
+                parsed_port = parsed.port or 443
+            except ValueError:
+                parsed_port = None
             if (
                 parsed.scheme.lower() != "https"
                 or (parsed.hostname or "").lower() != (origin.hostname or "").lower()
-                or parsed.port not in (None, 443)
-                or origin.port not in (None, 443)
+                or parsed_port != origin_port
                 or parsed.username
                 or parsed.password
             ):
