@@ -90,7 +90,7 @@ def _backoff_delay(attempt: int) -> float:
 def _field_data_policy_allows(field_sensitive: bool) -> bool:
     """Fail closed before any bridge I/O for sensitive prompts.
 
-    The Bun bridge calls a hosted SDK; loopback transport is not local inference.
+    The Bun bridge delegates to an upstream SDK endpoint; loopback transport is not proof of local inference.
     """
     if not field_sensitive:
         return True
