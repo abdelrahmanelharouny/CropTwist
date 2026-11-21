@@ -277,11 +277,12 @@ class WaPORV3Client:
         import math
 
         def finite_number(value: Any) -> bool:
-            return (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and math.isfinite(float(value))
-            )
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return False
+            try:
+                return math.isfinite(float(value))
+            except (OverflowError, ValueError):
+                return False
 
         # Ignore malformed upstream metadata and fall back only to independently
         # documented raster tags or the versioned product catalogue.
@@ -304,13 +305,18 @@ class WaPORV3Client:
             else None
         )
         offset_candidates = (raster.get("offset"), raster_metadata.get("offset"))
-        reported_offset = next(
-            (float(value) for value in offset_candidates if finite_number(value)),
-            None,
-        )
+        present_offsets = [value for value in offset_candidates if value is not None]
+        valid_offsets = [float(value) for value in present_offsets if finite_number(value)]
         # The published WaPOR product registry specifies multiplicative scaling
-        # only. A non-zero raster offset conflicts with that contract.
-        offset = 0.0 if reported_offset in (None, 0.0) else None
+        # only. Missing offsets imply zero; malformed or non-zero metadata is a
+        # conflict and withholds scaled physical values.
+        offset = (
+            0.0
+            if not present_offsets
+            else 0.0
+            if len(valid_offsets) == len(present_offsets) and all(value == 0.0 for value in valid_offsets)
+            else None
+        )
         unit_candidates = (raster.get("unit"), raster_metadata.get("unit"))
         reported_unit = next(
             (
