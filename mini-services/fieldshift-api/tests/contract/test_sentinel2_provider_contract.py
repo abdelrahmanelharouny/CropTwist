@@ -15,6 +15,7 @@ from app.data_platform.providers.sentinel2.provider import (
     Sentinel2StacProvider,
     _gdal_env_options,
     _observations_from_item,
+    _radiometry_for_scene,
     _rasterio_asset_href,
     _safe_asset_href_for_metadata,
 )
@@ -374,3 +375,39 @@ def test_stac_pagination_preserves_a_configured_nonstandard_https_port(monkeypat
         end=datetime(2024, 7, 31, tzinfo=UTC),
     )
     assert [item["id"] for item in items] == ["scene-1", "scene-2"]
+
+def test_radiometry_rejects_non_finite_or_boolean_stac_scale():
+    from types import SimpleNamespace
+
+    reading = SimpleNamespace(scale_values={"red": 1.0}, offset_values={"red": 0.0})
+    for bad_scale in (float("nan"), float("inf"), True, 0.0, -0.1):
+        item = {
+            "properties": {"processing:version": "05.11"},
+            "assets": {"B04_10m": {"raster:bands": [{"scale": bad_scale, "offset": -0.1}]}},
+        }
+        with pytest.raises(ValueError, match="STAC scale"):
+            _radiometry_for_scene(item, reading, {"red": "red.tif"})
+
+
+def test_radiometry_rejects_conflicting_stac_and_geotiff_scales():
+    from types import SimpleNamespace
+
+    reading = SimpleNamespace(scale_values={"red": 0.0001}, offset_values={"red": 0.0})
+    item = {
+        "properties": {"processing:version": "05.11"},
+        "assets": {"B04_10m": {"raster:bands": [{"scale": 0.0002, "offset": -0.1}]}},
+    }
+    with pytest.raises(ValueError, match="scale metadata conflict"):
+        _radiometry_for_scene(item, reading, {"red": "red.tif"})
+
+
+def test_radiometry_rejects_conflicting_stac_and_geotiff_offsets():
+    from types import SimpleNamespace
+
+    reading = SimpleNamespace(scale_values={"red": 1.0}, offset_values={"red": -0.1})
+    item = {
+        "properties": {"processing:version": "05.11"},
+        "assets": {"B04_10m": {"raster:bands": [{"scale": 0.0001, "offset": 0.0}]}},
+    }
+    with pytest.raises(ValueError, match="offset metadata conflict"):
+        _radiometry_for_scene(item, reading, {"red": "red.tif"})
