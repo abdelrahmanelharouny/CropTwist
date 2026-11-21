@@ -17,7 +17,7 @@ from typing import Any
 from app.intelligence.config import ai_settings
 
 MODEL_NAME = "intfloat/multilingual-e5-small"
-MODEL_REVISION = "ffdcc22"
+MODEL_REVISION = "919cfbe11fbf4f1b9bb321007c46c14feaf84227"
 MODEL_FILE = "onnx/model.onnx"
 MODEL_SHA256 = "ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665"
 MODEL_DIMENSIONS = 384
