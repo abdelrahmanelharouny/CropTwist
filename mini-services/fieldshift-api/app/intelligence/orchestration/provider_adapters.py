@@ -1691,8 +1691,8 @@ def register_default_providers(registry: ProviderRegistry) -> None:
 
 def _allowed_for_sensitive_data(name: str) -> bool:
     # A loopback HTTP hop is not proof of local inference. The legacy Bun
-    # bridge delegates to a hosted SDK/provider, so its upstream data handling
-    # is external unless the operator explicitly approves field-data egress.
+    # bridge delegates to an SDK whose upstream completion endpoint is configured
+    # outside this HTTP hop; loopback does not prove local prompt processing.
     if name == "legacy-llm-bridge":
         return ai_settings.ai_allow_field_data_to_providers
     if not ai_settings.ai_allow_field_data_to_providers:
