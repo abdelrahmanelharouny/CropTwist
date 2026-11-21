@@ -37,6 +37,7 @@ Honesty properties:
 from __future__ import annotations
 
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Any
 
