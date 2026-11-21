@@ -74,6 +74,7 @@ def test_list_rasters_validates_mapset_and_trusted_cog_url():
     rasters = client.list_rasters("L2-T-D")
     assert len(rasters) == 1
     assert rasters[0]["unit"] == "mm/dekad"
+    assert rasters[0]["period_code"] == "2025-01-D1"
     with pytest.raises(ValueError, match="mapset code"):
         client.list_rasters("../secrets")
 
