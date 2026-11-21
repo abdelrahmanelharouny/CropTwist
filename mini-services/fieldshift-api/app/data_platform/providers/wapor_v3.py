@@ -53,6 +53,7 @@ def _safe_raster_url(url: str) -> bool:
             and parsed.password is None
             and parsed.path.startswith(_RASTER_BUCKET_PREFIX)
             and parsed.path != _RASTER_BUCKET_PREFIX
+            and not parsed.query
             and not parsed.fragment
         )
     except ValueError:
@@ -271,7 +272,7 @@ class WaPORV3Client:
         period_code = raster.get("period_code") if isinstance(raster, dict) else None
         if (
             not isinstance(raster_code, str)
-            or not re.fullmatch(r"WAPOR-3\\." + re.escape(code) + r"\\.\\d{4}-\\d{2}-D[1-3]", raster_code)
+            or not re.fullmatch(r"WAPOR-3\." + re.escape(code) + r"\.\d{4}-\d{2}-D[1-3]", raster_code)
             or period_code != raster_code.rsplit(".", 1)[-1]
             or not _safe_raster_url(download_url)
         ):
