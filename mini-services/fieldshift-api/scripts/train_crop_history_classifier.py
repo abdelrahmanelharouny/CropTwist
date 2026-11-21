@@ -1,7 +1,7 @@
 """Train/evaluate a CatBoost crop head with strict spatial-temporal holdouts.
 
 CSV columns: field_id, farm_group_id, region_id, season_year, crop_code,
-label_source, label_source_verified, label_license, label_license_verified, valid_pixel_coverage, embedding_0..embedding_127.
+label_source, label_source_verified, label_license, label_license_verified, valid_pixel_coverage, embedding_model, input_schema_version, embedding_0..embedding_127.
 This script does not run until labels carry a reviewed source and license.
 """
 from __future__ import annotations
@@ -27,9 +27,11 @@ def _load(path: Path) -> list[dict]:
         rows = []
         for source in reader:
             row = {key: source[key] for key in (
-                "field_id", "farm_group_id", "region_id", "crop_code", "label_source", "label_license"
+                "field_id", "farm_group_id", "region_id", "crop_code", "label_source", "label_license", "embedding_model", "input_schema_version"
             )}
             row["label_source_verified"] = source["label_source_verified"].strip().casefold() == "true"
+            row["embedding_model"] = source["embedding_model"]
+            row["input_schema_version"] = source["input_schema_version"]
             row["label_license_verified"] = source["label_license_verified"].strip().casefold() == "true"
             row["season_year"] = int(source["season_year"])
             row["valid_pixel_coverage"] = float(source["valid_pixel_coverage"])
