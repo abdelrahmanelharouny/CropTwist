@@ -40,13 +40,33 @@ def evaluate_rankings(
     ks: tuple[int, ...] = (1, 3, 5),
 ) -> dict[str, Any]:
     """Compute macro Recall@k, Precision@k, nDCG@k and MRR over judged queries."""
-    if not query_ids or not document_ids or len(set(query_ids)) != len(query_ids) or len(set(document_ids)) != len(document_ids):
-        raise ValueError("benchmark IDs must be non-empty and unique")
+    if (
+        not isinstance(query_ids, list)
+        or not isinstance(document_ids, list)
+        or not query_ids
+        or not document_ids
+        or any(not isinstance(value, str) or not value.strip() for value in [*query_ids, *document_ids])
+        or len(set(query_ids)) != len(query_ids)
+        or len(set(document_ids)) != len(document_ids)
+    ):
+        raise ValueError("benchmark IDs must be non-empty unique strings")
+    if not isinstance(rankings, dict) or not isinstance(relevant_document_ids, dict):
+        raise ValueError("benchmark rankings and relevance judgements must be objects")
     if set(query_ids) - set(relevant_document_ids) or set(query_ids) - set(rankings):
         raise ValueError("every query requires relevance judgements and a ranking")
-    if any(not relevant_document_ids[qid] for qid in query_ids):
+    if any(
+        not isinstance(relevant_document_ids[qid], (set, list, tuple))
+        or not relevant_document_ids[qid]
+        for qid in query_ids
+    ):
         raise ValueError("every benchmark query must have at least one relevant document")
-    effective_ks = tuple(k for k in ks if 1 <= k <= len(document_ids))
+    if (
+        not isinstance(ks, tuple)
+        or not ks
+        or any(isinstance(k, bool) or not isinstance(k, int) or k < 1 for k in ks)
+    ):
+        raise ValueError("evaluation cutoffs must be positive integers")
+    effective_ks = tuple(dict.fromkeys(k for k in ks if k <= len(document_ids)))
     if not effective_ks:
         raise ValueError("evaluation requires at least one valid k")
     doc_set = set(document_ids)
