@@ -89,7 +89,7 @@ def test_field_window_masks_outside_field_and_preserves_raw_units(monkeypatch):
     monkeypatch.setattr(
         wapor_v3,
         "get_product",
-        lambda code: wapor_v3.WaPORProduct("L2-T-D", "id", 2, "transpiration", "dekadal", 100, "Africa", ("EGY",)),
+        lambda code: type("Product", (), {"resolution_m": 100})(),
     )
     monkeypatch.setattr(
         "app.geospatial.preprocessing.read_scene_window",
