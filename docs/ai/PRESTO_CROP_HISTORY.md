@@ -64,7 +64,7 @@ independence of labels are verified.
 
 Once verified labels and Presto embeddings are assembled into a CSV with
 `field_id`, `farm_group_id`, `region_id`, `season_year`, `crop_code`,
-`label_source`, `label_license`, `valid_pixel_coverage` and
+`label_source`, `label_source_verified`, `label_license`,\n`label_license_verified`, `valid_pixel_coverage` and
 `embedding_0..embedding_127`, run:
 
 ```bash
@@ -72,7 +72,7 @@ python scripts/train_crop_history_classifier.py ./egypt-presto-embeddings.csv
 ```
 
 The script uses CatBoost on CPU and evaluates a strict leave-one-region-out
-plus latest-season holdout. It requires disjoint farm groups, class-complete
+plus latest-season holdout. It requires explicitly verified label source/license flags, disjoint farm groups, class-complete
 training and calibration partitions, and source/license metadata for every
 label. Temperature scaling is fitted only on farm-disjoint calibration groups.
 The report includes macro-F1, balanced accuracy, multiclass Brier score, ECE,
