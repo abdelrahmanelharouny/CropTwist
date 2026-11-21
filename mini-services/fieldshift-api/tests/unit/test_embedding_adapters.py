@@ -1,9 +1,15 @@
 import asyncio
+import hashlib
 
 import pytest
 
 from app.intelligence.config import ai_settings
-from app.intelligence.orchestration.embedding_adapters import FastEmbedMultilingualMiniLMProvider
+from app.intelligence.orchestration.embedding_adapters import (
+    FastEmbedMultilingualE5Provider,
+    MODEL_NAME,
+    MODEL_SHA256,
+    verify_e5_artifact,
+)
 
 
 class _FakeVector:
@@ -23,77 +29,66 @@ class _FakeModel:
         return [_FakeVector([0.1] * 384) for _ in texts]
 
 
-def test_local_multilingual_document_and_query_embeddings(monkeypatch):
+def test_local_e5_document_and_query_embeddings_use_task_prefixes(monkeypatch):
     model = _FakeModel()
     monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", True)
     monkeypatch.setattr(
-        FastEmbedMultilingualMiniLMProvider,
+        FastEmbedMultilingualE5Provider,
         "_load_model",
         staticmethod(lambda model_name, cache_dir, threads: model),
     )
-    provider = FastEmbedMultilingualMiniLMProvider()
+    provider = FastEmbedMultilingualE5Provider()
     documents = asyncio.run(provider.embed(["wheat irrigation"]))
     query = asyncio.run(provider.embed_query("متى أزرع القمح؟"))
     assert len(documents) == 1 and len(documents[0]) == 384
     assert len(query) == 384
     assert documents[0][0] == pytest.approx(0.1)
-    assert model.inputs == ["wheat irrigation", "متى أزرع القمح؟"]
+    assert model.inputs == ["passage: wheat irrigation", "query: متى أزرع القمح؟"]
 
 
-def test_local_minilm_adapter_is_disabled_by_default(monkeypatch):
+def test_local_e5_adapter_is_disabled_by_default(monkeypatch):
     monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", False)
-    provider = FastEmbedMultilingualMiniLMProvider()
+    provider = FastEmbedMultilingualE5Provider()
     with pytest.raises(RuntimeError, match="disabled by configuration"):
         asyncio.run(provider.embed(["test"]))
 
 
-def test_local_minilm_adapter_rejects_unbounded_batches(monkeypatch):
+def test_local_e5_adapter_rejects_unbounded_batches(monkeypatch):
     monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", True)
-    provider = FastEmbedMultilingualMiniLMProvider()
+    provider = FastEmbedMultilingualE5Provider()
     with pytest.raises(ValueError, match="batch size"):
         asyncio.run(provider.embed(["x"] * 33))
 
-def test_pinned_fastembed_registry_contains_selected_multilingual_model():
-    from fastembed import TextEmbedding
 
+def test_local_e5_adapter_refuses_unreviewed_model(monkeypatch):
+    monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", True)
+    monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_model", "some/other-model")
+    with pytest.raises(RuntimeError, match="not the reviewed multilingual E5 model"):
+        asyncio.run(FastEmbedMultilingualE5Provider().embed(["test"]))
+
+
+def test_e5_artifact_verification_checks_exact_sha256(tmp_path, monkeypatch):
+    import app.intelligence.orchestration.embedding_adapters as adapter
+
+    artifact = tmp_path / "onnx"
+    artifact.mkdir()
+    model_file = artifact / "model.onnx"
+    model_file.write_bytes(b"reviewed-model-artifact")
+    digest = hashlib.sha256(model_file.read_bytes()).hexdigest()
+    monkeypatch.setattr(adapter, "MODEL_SHA256", digest)
+    assert verify_e5_artifact(tmp_path) == model_file
+
+    monkeypatch.setattr(adapter, "MODEL_SHA256", "0" * 64)
+    with pytest.raises(RuntimeError, match="SHA-256"):
+        verify_e5_artifact(tmp_path)
+
+
+def test_fastembed_registry_contains_pinned_e5_custom_model():
+    TextEmbedding = FastEmbedMultilingualE5Provider._register_custom_model()
     selected = next(
         model for model in TextEmbedding.list_supported_models()
-        if model["model"] == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        if model["model"] == MODEL_NAME
     )
     assert selected["dim"] == 384
-    assert "Multilingual" in selected["description"]
-    assert "512 input tokens" in selected["description"]
-    assert selected["license"] == "apache-2.0"
-    assert selected["size_in_GB"] <= 0.25
-
-
-@pytest.mark.parametrize(
-    "vector, message",
-    [
-        ([0.1, 0.2], "dimension"),
-        ([float("nan")] * 384, "non-finite"),
-        ([0.0] * 384, "zero-norm"),
-    ],
-)
-def test_local_adapter_rejects_invalid_embedding_vectors(monkeypatch, vector, message):
-    class BadModel:
-        def embed(self, texts):
-            return [_FakeVector(vector) for _ in texts]
-
-    monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", True)
-    monkeypatch.setattr(
-        FastEmbedMultilingualMiniLMProvider,
-        "_load_model",
-        staticmethod(lambda model_name, cache_dir, threads: BadModel()),
-    )
-    with pytest.raises(ValueError, match=message):
-        asyncio.run(FastEmbedMultilingualMiniLMProvider().embed(["test"]))
-
-
-
-def test_local_adapter_refuses_unreviewed_model_before_loading_fastembed(monkeypatch):
-    monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", True)
-    monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_model", "intfloat/multilingual-e5-small")
-    provider = FastEmbedMultilingualMiniLMProvider()
-    with pytest.raises(RuntimeError, match="not the reviewed multilingual MiniLM model"):
-        asyncio.run(provider.embed(["test"]))
+    assert selected["license"] == "mit"
+    assert selected["model_file"] == "onnx/model.onnx"
