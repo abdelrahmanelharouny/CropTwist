@@ -64,7 +64,7 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
                 raise ValueError(f"Presto input channel {name} must be finite numeric data")
             bounds = {
-                "vv_db": (-80.0, 20.0), "vh_db": (-80.0, 20.0),
+                "vv_db": (-50.0, 1.0), "vh_db": (-50.0, 1.0),
                 "b02_dn": (0.0, 20000.0), "b03_dn": (0.0, 20000.0),
                 "b04_dn": (0.0, 20000.0), "b05_dn": (0.0, 20000.0),
                 "b06_dn": (0.0, 20000.0), "b07_dn": (0.0, 20000.0),
