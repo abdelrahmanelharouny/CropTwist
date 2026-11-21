@@ -17,7 +17,7 @@ def validate_training_rows(rows: list[dict[str, Any]]) -> None:
         raise ValueError("training dataset is empty")
     required = {
         "field_id", "farm_group_id", "region_id", "season_year",
-        "crop_code", "label_source", "label_source_verified", "label_license", "label_license_verified", "valid_pixel_coverage",
+        "crop_code", "label_source", "label_source_verified", "label_license", "label_license_verified", "valid_pixel_coverage", "embedding_model", "input_schema_version",
     }
     seen: set[tuple[str, int]] = set()
     regions: set[str] = set()
@@ -33,6 +33,10 @@ def validate_training_rows(rows: list[dict[str, Any]]) -> None:
             raise ValueError(f"row {index} has an unverified or unapproved label source")
         if row["label_license_verified"] is not True:
             raise ValueError(f"row {index} has an unverified label license")
+        if row["embedding_model"] != "torchgeo/presto:PRESTO":
+            raise ValueError(f"row {index} uses an unsupported or mixed embedding model")
+        if row["input_schema_version"] != "presto-17ch-12m-v1":
+            raise ValueError(f"row {index} uses an unsupported Presto input schema")
         year = int(row["season_year"])
         key = (row["field_id"], year)
         if key in seen:
