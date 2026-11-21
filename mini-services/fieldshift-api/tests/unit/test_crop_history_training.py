@@ -148,3 +148,28 @@ def test_spatiotemporal_holdout_rejects_boolean_target_year():
     ]
     with pytest.raises(ValueError, match="target_year must be an integer"):
         spatial_temporal_holdout(rows, held_out_region="zankalon", target_year=True)
+
+def test_training_rows_reject_non_object_rows_and_malformed_label_source():
+    with pytest.raises(ValueError, match="row 0 must be an object"):
+        validate_training_rows([["not", "an", "object"]])
+
+    row = _row("f1", "farm1", "north", 2023, "wheat")
+    row["label_source"] = ["official_statistics"]
+    rows = [
+        row,
+        _row("f2", "farm2", "south", 2023, "maize"),
+        _row("f3", "farm3", "east", 2024, "clover"),
+    ]
+    with pytest.raises(ValueError, match="unverified or unapproved label source"):
+        validate_training_rows(rows)
+
+
+def test_spatiotemporal_holdout_rejects_missing_grouping_fields():
+    rows = [
+        _row("f1", "farm1", "north", 2023, "wheat"),
+        _row("f2", "farm2", "south", 2023, "maize"),
+        _row("f3", "farm3", "east", 2024, "clover"),
+    ]
+    del rows[0]["farm_group_id"]
+    with pytest.raises(ValueError, match="farm_group_id must be a non-empty string"):
+        spatial_temporal_holdout(rows, held_out_region="east", target_year=2024)
