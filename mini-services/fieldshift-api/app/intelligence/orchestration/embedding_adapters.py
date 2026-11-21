@@ -25,12 +25,12 @@ class FastEmbedMultilingualMiniLMProvider:
     @staticmethod
     @lru_cache(maxsize=1)
     def _load_model(model_name: str, cache_dir: str, threads: int) -> Any:
+        if model_name != FastEmbedMultilingualMiniLMProvider.supported_model:
+            raise RuntimeError("configured local embedding model is not the reviewed multilingual MiniLM model")
         try:
             from fastembed import TextEmbedding
         except ImportError as exc:
             raise RuntimeError("FastEmbed is not installed") from exc
-        if model_name != FastEmbedMultilingualMiniLMProvider.supported_model:
-            raise RuntimeError("configured local embedding model is not the reviewed multilingual MiniLM model")
         return TextEmbedding(model_name=model_name, cache_dir=cache_dir or None, threads=threads)
 
     def _encode(self, texts: list[str]) -> list[list[float]]:
