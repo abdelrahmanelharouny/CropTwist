@@ -76,6 +76,10 @@ class CropHistoryRecord(BaseModel):
             raise ValueError("season_end must not precede season_start")
         if (self.centroid_lat is None) != (self.centroid_lon is None):
             raise ValueError("field centroid latitude and longitude must be supplied together")
+        if self.region_id is not None and not self.region_id.strip():
+            raise ValueError("region_id must not be blank")
+        if self.label_license is not None and not self.label_license.strip():
+            raise ValueError("label_license must not be blank")
         if (self.label_crop_code is None) != (self.label_source is None):
             raise ValueError("crop label and its source must be supplied together")
         if self.label_crop_code is None and (
