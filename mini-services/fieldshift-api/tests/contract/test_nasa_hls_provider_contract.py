@@ -466,6 +466,41 @@ def test_fmask_masks_high_aerosol_pixels(monkeypatch):
     assert observation.metadata["fmask_qa"]["aot_level_counts"]["high"] == 1
 
 
+
+def test_fmask_aerosol_low_and_medium_bit_patterns_are_not_swapped(monkeypatch):
+    import numpy as np
+
+    dn_red = np.full((12, 12), 0.12 * 10000)
+    dn_nir = np.full((12, 12), 0.42 * 10000)
+    fmask = np.zeros((12, 12), dtype="uint8")
+    # HLS v2 bits 6-7: 10 = low, 01 = medium.
+    fmask[5, 5] = 0b01000000
+    fmask[6, 6] = 0b10000000
+    _fake_raster_seam(monkeypatch, dn_red, dn_nir, fmask=fmask)
+
+    provider = NasaHlsProvider(client=make_client([_search_body([])]))
+    aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
+    scene_id = "HLS.L30.T16SDC.2024189T164537.v2.0"
+    records = {
+        scene_id: {
+            "scene_id": scene_id,
+            "collection": "HLSL30",
+            "acquired_at": "2024-07-07T16:45:37+00:00",
+            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+        }
+    }
+    result = provider.fetch_observations(
+        area_of_interest=aoi,
+        variables=["ndvi"],
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+        options={"scene_ids": [scene_id], "scene_records": records},
+    )
+    counts = result.observations[0].metadata["fmask_qa"]["aot_level_counts"]
+    assert counts["low"] == 1
+    assert counts["medium"] == 1
+    assert counts["high"] == 0
+
 def test_scene_without_fmask_is_skipped_instead_of_claiming_qa_masking(monkeypatch):
     import numpy as np
 
