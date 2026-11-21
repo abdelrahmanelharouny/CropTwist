@@ -4,7 +4,7 @@ import csv
 import pytest
 
 from app.intelligence.crop_history.contracts import CropHistoryRecord, MonthlyCropFeatures
-from scripts import encode_crop_history_embeddings as encoder
+from scripts import export_presto_embeddings as encoder
 
 
 def _record(index: int, region: str, crop: str) -> CropHistoryRecord:
@@ -49,7 +49,9 @@ def test_encoder_builds_only_verified_egypt_training_rows(monkeypatch):
         "encode_records",
         lambda batch, bundle, batch_size: [[float(index)] * 128 for index, _ in enumerate(batch)],
     )
-    rows = encoder.encode_training_rows(records, bundle=object(), batch_size=3)
+    rows = encoder.encode_training_rows(
+        records, bundle=type("Bundle", (), {"model_id": "torchgeo/presto:PRESTO"})(), batch_size=3
+    )
     assert len(rows) == len(records)
     assert rows[0]["embedding_model"] == "torchgeo/presto:PRESTO"
     assert len(rows[0]["embedding"]) == 128
@@ -66,7 +68,9 @@ def test_encoder_refuses_unverified_labels_before_model_inference(monkeypatch):
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("model must not run")),
     )
     with pytest.raises(ValueError, match="verified crop label and license"):
-        encoder.encode_training_rows([record], bundle=object())
+        encoder.encode_training_rows(
+            [record], bundle=type("Bundle", (), {"model_id": "torchgeo/presto:PRESTO"})()
+        )
 
 
 def test_training_csv_has_explicit_model_schema_and_embedding_columns(tmp_path):
@@ -74,6 +78,8 @@ def test_training_csv_has_explicit_model_schema_and_embedding_columns(tmp_path):
         "field_id": "field-1",
         "farm_group_id": "farm-1",
         "region_id": "north",
+        "country_code": "EGY",
+        "geometry_hash": "0123456789abcdef",
         "season_year": 2025,
         "crop_code": "WHEAT",
         "label_source": "verified_farmer_record",
