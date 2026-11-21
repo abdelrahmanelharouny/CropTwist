@@ -467,11 +467,22 @@ def search_knowledge(
     max_embedding_age: timedelta = MAX_EMBEDDING_AGE,
 ) -> list[KnowledgePassage]:
     """Exact cosine scan over fresh, same-model, same-tenant bounded candidates."""
+    if not isinstance(organization_id, UUID):
+        raise KnowledgeError("organization scope is required for knowledge retrieval")
     query = validate_embedding(query_embedding)
-    if not 1 <= top_k <= 20 or not 1 <= max_candidates <= MAX_SEARCH_CANDIDATES:
+    if (
+        isinstance(top_k, bool) or not isinstance(top_k, int) or not 1 <= top_k <= 20
+        or isinstance(max_candidates, bool) or not isinstance(max_candidates, int)
+        or not 1 <= max_candidates <= MAX_SEARCH_CANDIDATES
+    ):
         raise KnowledgeError("retrieval limits are outside the supported bound")
-    if not -1.0 <= min_similarity <= 1.0:
-        raise KnowledgeError("similarity threshold must be between -1 and 1")
+    if (
+        isinstance(min_similarity, bool)
+        or not isinstance(min_similarity, (int, float))
+        or not math.isfinite(float(min_similarity))
+        or not -1.0 <= min_similarity <= 1.0
+    ):
+        raise KnowledgeError("similarity threshold must be a finite number between -1 and 1")
     if (
         not isinstance(embedding_provider, str)
         or not embedding_provider.strip()
