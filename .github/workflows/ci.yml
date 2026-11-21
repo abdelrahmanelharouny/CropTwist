@@ -20,6 +20,15 @@ on:
     branches: [main]
   pull_request:
 
+# A feature-branch push and its pull_request event share one concurrency key.
+# Keep only one expensive PostGIS + frontend run per branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: backend (pytest + alembic + E2E on PostGIS 16-3.5)
