@@ -360,7 +360,7 @@ class NasaHlsProvider:
             token = data.get("token") or data.get("access_token")
             return token if isinstance(token, str) and token else None
         except Exception as exc:  # noqa: BLE001 — auth is best-effort
-            logger.warning("Earthdata token mint failed (%s); using basic-auth GDAL path", exc)
+            logger.warning("Earthdata token mint failed (%s); using basic-auth GDAL path", type(exc).__name__)
             return None
 
 
@@ -566,11 +566,12 @@ def _scene_observations(
         fmask_uint8 = fmask.astype(np.uint8)
         high_aerosol_mask = (fmask_uint8 & FMASK_AOT_MASK) == FMASK_AOT_HIGH
         cloud_mask = ((fmask_uint8 & FMASK_EXCLUDE_MASK) != 0) | high_aerosol_mask
-    except Exception as exc:  # noqa: BLE001 — network/raster failures degrade per scene
+    except Exception as exc:  # noqa: BLE001 — raster errors can contain signed asset URLs
+        reason = type(exc).__name__
         raise ProviderUnavailable(
-            f"Scene {scene_id} could not be read or validated ({type(exc).__name__}: {exc}); "
+            f"Scene {scene_id} could not be read or validated ({reason}); "
             "verify Earthdata credentials, COG availability, CRS metadata and QA assets.",
-            details=[{"scene_id": scene_id, "reason": str(exc)}],
+            details=[{"scene_id": scene_id, "reason": reason}],
         ) from exc
 
     observations: list[CanonicalObservation] = []
