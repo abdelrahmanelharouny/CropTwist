@@ -51,3 +51,15 @@ def test_e5_adapter_rejects_unbounded_batches(monkeypatch):
     provider = FastEmbedMultilingualMiniLMProvider()
     with pytest.raises(ValueError, match="batch size"):
         asyncio.run(provider.embed(["x"] * 33))
+
+def test_pinned_fastembed_registry_contains_selected_multilingual_model():
+    from fastembed import TextEmbedding
+
+    selected = next(
+        model for model in TextEmbedding.list_supported_models()
+        if model["model"] == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
+    assert selected["dim"] == 384
+    assert "Multilingual" in selected["description"]
+    assert selected["license"] == "apache-2.0"
+    assert selected["size_in_GB"] <= 0.25
