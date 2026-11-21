@@ -127,3 +127,24 @@ def test_training_metadata_rejects_integer_values_that_overflow_float_conversion
     rows[0]["embedding"][0] = 10**10000
     with pytest.raises(ValueError, match="non-finite or non-numeric"):
         validate_training_rows(rows)
+
+@pytest.mark.parametrize("bad_year", ["2024", 2024.5, True])
+def test_spatiotemporal_holdout_rejects_non_integer_season_years(bad_year):
+    rows = [
+        _row("f1", "farm1", "sidi_ghazi", 2023, "wheat"),
+        _row("f2", "farm2", "mallawi", 2023, "maize"),
+        _row("f3", "farm3", "zankalon", 2024, "clover"),
+    ]
+    rows[0]["season_year"] = bad_year
+    with pytest.raises(ValueError, match="season_year must be an integer year"):
+        spatial_temporal_holdout(rows, held_out_region="zankalon", target_year=2024)
+
+
+def test_spatiotemporal_holdout_rejects_boolean_target_year():
+    rows = [
+        _row("f1", "farm1", "sidi_ghazi", 2023, "wheat"),
+        _row("f2", "farm2", "mallawi", 2023, "maize"),
+        _row("f3", "farm3", "zankalon", 2024, "clover"),
+    ]
+    with pytest.raises(ValueError, match="target_year must be an integer"):
+        spatial_temporal_holdout(rows, held_out_region="zankalon", target_year=True)
