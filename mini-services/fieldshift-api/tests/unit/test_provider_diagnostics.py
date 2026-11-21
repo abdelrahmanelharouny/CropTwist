@@ -140,3 +140,20 @@ def test_probe_does_not_echo_untrusted_exception_category(monkeypatch):
     result = asyncio.run(provider_diagnostics.probe_provider("broken"))
     assert result["error_category"] == "provider_probe_failed"
     assert "secret_token_value_123" not in str(result)
+
+def test_probe_handles_non_string_exception_category(monkeypatch):
+    class MalformedCategoryError(RuntimeError):
+        category = ["not", "a", "string"]
+
+    class Broken:
+        name = "broken"
+        model = "model"
+        configured = True
+
+        async def generate(self, messages, **kwargs):
+            raise MalformedCategoryError("upstream failed")
+
+    monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Broken())
+    result = asyncio.run(provider_diagnostics.probe_provider("broken"))
+    assert result["status"] == "failed"
+    assert result["error_category"] == "provider_probe_failed"
