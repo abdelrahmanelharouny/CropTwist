@@ -193,6 +193,9 @@ class WaPORV3Client:
                 "scale_factor": item.get("scale") if isinstance(item.get("scale"), (int, float)) else product.scale_factor,
                 "offset": item.get("offset") if isinstance(item.get("offset"), (int, float)) else None,
                 "period_code": period_code,
+                "resolution_m": product.resolution_m,
+                "license": product.license,
+                "metadata_reference": product.metadata_reference,
                 "raw_metadata": {key: item[key] for key in ("unit", "scale", "offset", "startDate", "endDate") if key in item},
             })
         return result
