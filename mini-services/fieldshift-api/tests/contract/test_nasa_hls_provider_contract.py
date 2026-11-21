@@ -691,3 +691,45 @@ def test_hls_explicit_scene_records_validate_keys_before_sorting():
             datetime(2024, 7, 31, tzinfo=UTC),
             FIELD_GEOMETRY,
         )
+
+
+def test_fmask_aerosol_level_counts_follow_hls_bit_order(monkeypatch):
+    import numpy as np
+
+    dn_red = np.full((12, 12), 0.12 * 10000)
+    dn_nir = np.full((12, 12), 0.42 * 10000)
+    fmask = np.zeros((12, 12), dtype="uint8")
+    # HLS QA documents bits 7:6 as 10=low and 01=medium.
+    fmask.flat[:48] = 0b10000000
+    fmask.flat[48:96] = 0b01000000
+    _fake_raster_seam(monkeypatch, dn_red, dn_nir, fmask=fmask)
+
+    provider = NasaHlsProvider(client=make_client([_search_body([])]))
+    aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
+    scene_id = "HLS.L30.T16SDC.2024189T164537.v2.0"
+    records = {
+        scene_id: {
+            "scene_id": scene_id,
+            "collection": "HLSL30",
+            "acquired_at": "2024-07-07T16:45:37+00:00",
+            "assets": {
+                "red": f"{LP}/test.red.tif",
+                "nir": f"{LP}/test.nir.tif",
+                "fmask": f"{LP}/test.Fmask.tif",
+            },
+        }
+    }
+    result = provider.fetch_observations(
+        area_of_interest=aoi,
+        variables=["ndvi"],
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+        options={"scene_ids": [scene_id], "scene_records": records},
+    )
+    qa = result.observations[0].metadata["fmask_qa"]
+    assert qa["aot_level_counts"] == {
+        "climatology": 48,
+        "low": 48,
+        "medium": 48,
+        "high": 0,
+    }
