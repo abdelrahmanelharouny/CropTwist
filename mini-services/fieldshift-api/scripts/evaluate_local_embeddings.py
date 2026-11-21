@@ -19,7 +19,7 @@ from app.intelligence.orchestration.knowledge import embedding_provider_registry
 
 async def _evaluate(path: Path) -> dict:
     corpus = json.loads(path.read_text(encoding="utf-8"))
-    provider = embedding_provider_registry.get("local-fastembed-e5")
+    provider = embedding_provider_registry.get("local-fastembed-multilingual-minilm")
     if provider is None:
         raise RuntimeError("Local embedding provider is not registered; enable its setting and restart the API.")
     return await evaluate_embedding_provider(
