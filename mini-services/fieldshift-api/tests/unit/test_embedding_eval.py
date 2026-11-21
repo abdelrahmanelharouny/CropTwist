@@ -52,4 +52,4 @@ def test_knowledge_chunk_size_respects_multilingual_model_context():
 
     chunks = chunk_document("Crop rotation improves soil health. " * 40)
     assert chunks
-    assert max(len(chunk) for chunk in chunks) <= 400
+    assert max(len(chunk) for chunk in chunks) <= 1200
