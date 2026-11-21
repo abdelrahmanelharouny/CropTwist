@@ -314,7 +314,7 @@ def test_interval_valued_soil_traits_use_conservative_lower_bounds_consistently(
         problem, {SUMMER.label: "barley", SECOND.label: "barley"}
     )
     assert result.evaluable
-    assert result.raw_value == pytest.approx(soil["barley"])
+    assert result.raw_value == pytest.approx(soil["barley"], abs=1e-4)  # objective output is rounded to 4 decimals
     assert "conservative lower bound" in result.derivation
     assert "barley-root" in {ref["source_key"] for ref in result.source_refs}
 
