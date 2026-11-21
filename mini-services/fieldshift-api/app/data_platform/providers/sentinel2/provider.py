@@ -225,7 +225,7 @@ class Sentinel2StacProvider:
                 self._last_auth_headers = {"Authorization": f"Bearer {token}"}
                 return dict(self._last_auth_headers)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("CDSE authentication failed (%s); continuing anonymous", exc)
+            logger.warning("CDSE authentication failed (%s); continuing anonymous", type(exc).__name__)
         self._last_auth_headers = {}
         return {}
 
@@ -338,9 +338,12 @@ class Sentinel2StacProvider:
                 response.raise_for_status()
                 body = response.json()
             except httpx.HTTPError as exc:
+                # Transport exceptions can include request URLs and signed
+                # query parameters. Expose only the exception class.
+                reason = type(exc).__name__
                 raise ProviderUnavailable(
-                    "Sentinel-2 STAC search failed (network or API error).",
-                    details=[{"reason": str(exc)}],
+                    f"Sentinel-2 STAC search failed ({reason}).",
+                    details=[{"reason": reason}],
                 ) from exc
             except ValueError as exc:
                 raise ProviderRequestError(
