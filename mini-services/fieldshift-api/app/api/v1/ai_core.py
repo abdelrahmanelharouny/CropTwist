@@ -152,7 +152,12 @@ def _knowledge_provider(name: str | None) -> Any | None:
     selected = name or (names[0] if len(names) == 1 else None)
     if selected is None:
         return None
-    return embedding_provider_registry.get(selected)
+    try:
+        return embedding_provider_registry.get(selected)
+    except LookupError:
+        # A caller-supplied unknown adapter is an unavailable capability, not
+        # an unhandled server error. The route returns its documented 503.
+        return None
 
 
 def _semantic_retrieval_readiness(
