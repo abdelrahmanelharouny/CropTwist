@@ -16,6 +16,8 @@ def _row(field, farm, region, year, crop):
         "label_license": "CC BY-SA 4.0",
         "label_license_verified": True,
         "valid_pixel_coverage": 0.8,
+        "embedding_model": "torchgeo/presto:PRESTO",
+        "input_schema_version": "presto-17ch-12m-v1",
         "embedding": [0.1] * 128,
     }
 
