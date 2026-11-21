@@ -22,10 +22,21 @@ def _reset_breaker_and_settings():
     global_breaker.reset()
     from app.intelligence.config import ai_settings
 
-    old = (ai_settings.llm_enabled, ai_settings.llm_max_concurrent)
+    old = (
+        ai_settings.llm_enabled,
+        ai_settings.llm_max_concurrent,
+        ai_settings.ai_allow_field_data_to_providers,
+    )
+    # This suite sends only synthetic test prompts to a mocked transport.
+    # Explicitly opt in for these fixtures; production defaults remain fail-closed.
+    ai_settings.ai_allow_field_data_to_providers = True
     yield
     global_breaker.reset()
-    ai_settings.llm_enabled, ai_settings.llm_max_concurrent = old
+    (
+        ai_settings.llm_enabled,
+        ai_settings.llm_max_concurrent,
+        ai_settings.ai_allow_field_data_to_providers,
+    ) = old
 
 
 def _patch_apost(monkeypatch, responses):
