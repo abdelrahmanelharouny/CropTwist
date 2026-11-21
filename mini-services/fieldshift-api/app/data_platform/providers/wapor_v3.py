@@ -39,7 +39,10 @@ class WaPORRasterWindow:
     unit: str | None
     scale_factor: float | None
     offset: float | None
+    scaled_mean: float | None
+    scaled_median: float | None
     period_code: str | None
+    metadata_reference: str
     resolution_m: int
     crs: str
     source_url: str
@@ -233,10 +236,18 @@ class WaPORV3Client:
         scale = raster.get("scale_factor")
         if not isinstance(scale, (int, float)):
             scale = raster_metadata.get("scale_factor")
+        if not isinstance(scale, (int, float)):
+            scale = product.scale_factor
         offset = raster.get("offset")
         if not isinstance(offset, (int, float)):
             offset = raster_metadata.get("offset")
         unit = raster.get("unit") if isinstance(raster.get("unit"), str) else raster_metadata.get("unit")
+        if not isinstance(unit, str):
+            unit = product.unit
+        if not isinstance(offset, (int, float)) and isinstance(scale, (int, float)) and unit:
+            offset = 0.0
+        scaled_mean = mean * float(scale) + float(offset) if mean is not None and isinstance(scale, (int, float)) and isinstance(offset, (int, float)) and unit else None
+        scaled_median = median * float(scale) + float(offset) if median is not None and isinstance(scale, (int, float)) and isinstance(offset, (int, float)) and unit else None
         return WaPORRasterWindow(
             mapset_code=code,
             raster_code=raster_code,
@@ -248,8 +259,11 @@ class WaPORV3Client:
             unit=unit if isinstance(unit, str) else None,
             scale_factor=float(scale) if isinstance(scale, (int, float)) else None,
             offset=float(offset) if isinstance(offset, (int, float)) else None,
+            scaled_mean=scaled_mean,
+            scaled_median=scaled_median,
             period_code=raster.get("period_code") if isinstance(raster.get("period_code"), str) else None,
             resolution_m=product.resolution_m,
             crs=reading.crs,
             source_url=download_url,
+            metadata_reference=product.metadata_reference,
         )
