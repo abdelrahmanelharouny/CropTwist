@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -122,9 +123,59 @@ class KnowledgeCrop:
         return self.traits.get(code)
 
     def numeric_trait(self, code: str, country_code: str | None = None) -> float | None:
-        """Numeric value using the same region-first resolution as citations."""
+        """Point numeric value using the same region-first resolution as citations.
+
+        Interval-only traits deliberately remain None here: callers that need
+        interval evidence must choose and disclose an explicit bound policy.
+        """
         t = self.resolve_trait(code, country_code)
-        return t.value_numeric if t else None
+        value = t.value_numeric if t else None
+        return float(value) if isinstance(value, (int, float)) and math.isfinite(value) else None
+
+    def numeric_trait_bounds(
+        self, code: str, country_code: str | None = None
+    ) -> tuple[float, float] | None:
+        """Return a point as (v, v) or a complete, finite [low, high] interval.
+
+        Partial, non-finite or reversed intervals are not numeric evidence.
+        Exact regional traits still take precedence over global traits.
+        """
+        trait = self.resolve_trait(code, country_code)
+        if trait is None:
+            return None
+        point = trait.value_numeric
+        if isinstance(point, (int, float)) and math.isfinite(point):
+            value = float(point)
+            return value, value
+        low, high = trait.value_low, trait.value_high
+        if (
+            isinstance(low, (int, float))
+            and isinstance(high, (int, float))
+            and math.isfinite(low)
+            and math.isfinite(high)
+            and low <= high
+        ):
+            return float(low), float(high)
+        return None
+
+    def conservative_numeric_trait(
+        self,
+        code: str,
+        country_code: str | None = None,
+        *,
+        direction: str = "maximize",
+    ) -> float | None:
+        """Resolve a point or interval to its conservative decision bound.
+
+        Maximized benefits use the lower bound; minimized burdens use the
+        upper bound. This avoids silently replacing uncertainty with a midpoint.
+        """
+        if direction not in ("maximize", "minimize"):
+            raise ValueError("direction must be 'maximize' or 'minimize'")
+        bounds = self.numeric_trait_bounds(code, country_code)
+        if bounds is None:
+            return None
+        return bounds[0] if direction == "maximize" else bounds[1]
 
 
 @dataclass(frozen=True)
