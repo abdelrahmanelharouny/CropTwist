@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CropCode = str
-FeatureName = Literal["ndvi", "evi", "ndmi", "ndwi", "vv", "vh", "rainfall_mm", "temperature_c"]
+FeatureName = Literal["ndvi", "evi", "ndmi", "ndwi", "vv_db", "vh_db", "rainfall_mm", "temperature_c"]
 
 
 class MonthlyCropFeatures(BaseModel):
@@ -28,8 +28,8 @@ class MonthlyCropFeatures(BaseModel):
     @model_validator(mode="after")
     def require_evidence_for_values(self) -> "MonthlyCropFeatures":
         allowed_presto_bands = {
-            "vv", "vh", "b02", "b03", "b04", "b05", "b06", "b07",
-            "b08", "b8a", "b11", "b12", "temperature_2m_k",
+            "vv_db", "vh_db", "b02_dn", "b03_dn", "b04_dn", "b05_dn", "b06_dn", "b07_dn",
+            "b08_dn", "b8a_dn", "b11_dn", "b12_dn", "temperature_2m_k",
             "total_precipitation_m", "elevation_m", "slope_degrees",
         }
         if set(self.presto_bands) - allowed_presto_bands:
