@@ -2,8 +2,9 @@
 
 The API worker does not import TorchGeo or download weights at startup. ML
 workers opt in by installing requirements-ml.txt and calling load_pretrained.
-The loader returns the original model so callers use the upstream documented
-forward contract rather than a locally reimplemented approximation.
+The loader exposes TorchGeo's pretrained encoder and retains its original
+LayerNorm separately so inference can reproduce NASA Harvest's eval-task
+pooling contract while validating the compacted valid-token count.
 """
 from __future__ import annotations
 
