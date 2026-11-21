@@ -322,6 +322,28 @@ def test_stac_search_rejects_cross_origin_pagination(monkeypatch):
         )
 
 
+@pytest.mark.parametrize(
+    "invalid_cloud_cover",
+    [True, "80", float("nan"), float("inf"), 10**1000],
+)
+def test_fetch_observations_rejects_non_numeric_or_non_finite_cloud_cover(invalid_cloud_cover):
+    from app.core.errors import ProviderRequestError
+    from app.data_platform.contracts.observations import AreaOfInterest
+
+    provider = Sentinel2StacProvider(client=object())
+    with pytest.raises(ProviderRequestError):
+        provider.fetch_observations(
+            area_of_interest=AreaOfInterest(
+                field_id="field-1",
+                geometry_geojson=fixture_field_geojson(),
+            ),
+            variables=["ndvi"],
+            start=datetime(2024, 7, 1, tzinfo=UTC),
+            end=datetime(2024, 7, 31, tzinfo=UTC),
+            options={"max_cloud_cover": invalid_cloud_cover},
+        )
+
+
 def test_stac_search_rejects_invalid_cloud_cover_and_page_size():
     from app.core.errors import ProviderRequestError
 
