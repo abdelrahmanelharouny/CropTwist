@@ -349,3 +349,20 @@ def test_sensitive_provider_chain_never_falls_back_to_hosted_models_by_default(m
     chain = get_provider_chain(field_sensitive=True)
     assert [provider.name for provider in chain.providers] == ["ollama"]
     assert chain.allow_sensitive_data is True
+
+
+def test_ollama_rejects_non_object_messages_before_request():
+    provider = OllamaProvider(
+        base_url="http://127.0.0.1:11434",
+        num_ctx=8192,
+        keep_alive="5m",
+        **_provider_kwargs(httpx.MockTransport(lambda request: httpx.Response(200, json={}))),
+    )
+    with pytest.raises(ProviderFailure, match="provider_invalid_message_contract"):
+        provider._payload(
+            [None],
+            temperature=0,
+            max_tokens=32,
+            schema=None,
+            stream=False,
+        )
