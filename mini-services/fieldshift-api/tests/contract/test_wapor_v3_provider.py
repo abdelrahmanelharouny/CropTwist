@@ -57,6 +57,7 @@ def test_list_rasters_validates_mapset_and_trusted_cog_url():
                 "items": [
                     {
                         "code": "WAPOR-3.L2-T-D.2025-01-D1",
+                        "period_code": "2025-01-D1",
                         "downloadUrl": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
                         "unit": "mm/dekad",
                         "scale": 1.0,
@@ -113,6 +114,7 @@ def test_field_window_masks_outside_field_and_preserves_raw_units(monkeypatch):
         mapset_code="L2-T-D",
         raster={
             "code": "WAPOR-3.L2-T-D.2025-01-D1",
+            "period_code": "2025-01-D1",
             "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
             "unit": None,
             "scale_factor": None,
@@ -147,6 +149,7 @@ def test_field_window_refuses_non_tiled_asset(monkeypatch):
             mapset_code="L2-T-D",
             raster={
                 "code": "WAPOR-3.L2-T-D.2025-01-D1",
+                "period_code": "2025-01-D1",
                 "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
             },
             geometry_geojson={"type": "Polygon", "coordinates": []},
@@ -171,6 +174,7 @@ def test_field_window_rejects_untrusted_raster_authority_before_io(monkeypatch, 
             mapset_code="L2-T-D",
             raster={
                 "code": "WAPOR-3.L2-T-D.2025-01-D1",
+                "period_code": "2025-01-D1",
                 "download_url": url,
             },
             geometry_geojson={"type": "Polygon", "coordinates": []},
@@ -207,6 +211,7 @@ def test_conflicting_scale_unit_and_offset_withhold_scaled_values(monkeypatch):
         mapset_code="L2-T-D",
         raster={
             "code": "WAPOR-3.L2-T-D.2025-01-D1",
+            "period_code": "2025-01-D1",
             "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
             "scale_factor": float("nan"),
             "offset": True,
@@ -300,6 +305,7 @@ def test_all_reported_scale_and_unit_sources_must_agree(monkeypatch):
         mapset_code="L2-T-D",
         raster={
             "code": "WAPOR-3.L2-T-D.2025-01-D1",
+            "period_code": "2025-01-D1",
             "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
             "unit": "mm/day",
             "scale_factor": 0.1,
@@ -344,6 +350,7 @@ def test_malformed_catalogue_scale_and_unit_are_not_replaced_by_defaults(monkeyp
         mapset_code="L2-T-D",
         raster={
             "code": "WAPOR-3.L2-T-D.2025-01-D1",
+            "period_code": "2025-01-D1",
             "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
             "unit": 123,
             "scale_factor": "not-a-number",
