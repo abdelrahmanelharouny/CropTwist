@@ -986,6 +986,20 @@ class OllamaProvider(_HTTPProvider):
     def _parse_stream_event(self, body: dict[str, Any]) -> list[ProviderStreamEvent]:
         raise ProviderCapabilityUnavailable("Ollama native NDJSON streaming is intentionally disabled.")
 
+    async def _unsupported_stream(self) -> AsyncIterator[ProviderStreamEvent]:
+        raise ProviderCapabilityUnavailable("Ollama native NDJSON streaming is intentionally disabled.")
+        yield ProviderStreamEvent()  # pragma: no cover
+
+    def stream(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        request_id: str | None = None,
+    ) -> AsyncIterator[ProviderStreamEvent]:
+        return self._unsupported_stream()
+
 
 class GroqProvider(_OpenAICompatibleProvider):
     name = "groq"
