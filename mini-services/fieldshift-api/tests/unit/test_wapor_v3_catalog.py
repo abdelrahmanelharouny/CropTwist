@@ -82,3 +82,30 @@ def test_l1_interception_unit_conflict_withholds_canonical_physical_unit():
     assert product.temporal_support == "dekadal"
     assert product.unit is None
     assert product.scale_factor == 0.1
+
+
+def test_wapor_raster_catalog_requires_exact_product_period_and_deduplicates(monkeypatch):
+    from app.data_platform.providers.wapor_v3 import WaPORV3Client
+
+    items = [
+        {
+            "code": "WAPOR-3.L2-AETI-D.2025-01-D1",
+            "downloadUrl": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/a.tif",
+        },
+        {
+            "code": "WAPOR-3.L2-E-D.2025-01-D1",
+            "downloadUrl": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/wrong-product.tif",
+        },
+        {
+            "code": "WAPOR-3.L2-AETI-D.2025-01-D2.extra",
+            "downloadUrl": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/malformed.tif",
+        },
+    ]
+    client = WaPORV3Client()
+    monkeypatch.setattr(client, "_collect", lambda _: items)
+    rasters = client.list_rasters("L2-AETI-D")
+    assert [item["period_code"] for item in rasters] == ["2025-01-D1"]
+
+    monkeypatch.setattr(client, "_collect", lambda _: [items[0], items[0]])
+    with pytest.raises(Exception, match="duplicate raster identifier"):
+        client.list_rasters("L2-AETI-D")
