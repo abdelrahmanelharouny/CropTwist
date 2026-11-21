@@ -127,7 +127,7 @@ def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size:
                     month=months,
                 )
                 embeddings = bundle.pool_norm(tokens.mean(dim=1))
-            if embeddings.ndim != 2 or embeddings.shape[0] != len(batch):
+            if embeddings.ndim != 2 or embeddings.shape[0] != len(batch) or embeddings.shape[1] != 128:
                 raise RuntimeError("Presto encoder returned an invalid embedding shape")
             values = embeddings.detach().cpu().float().numpy()
             if not np.isfinite(values).all():
