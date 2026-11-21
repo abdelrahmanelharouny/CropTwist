@@ -93,6 +93,11 @@ def test_field_window_masks_outside_field_and_preserves_raw_units(monkeypatch):
         lambda code: type("Product", (), {"resolution_m": 100})(),
     )
     monkeypatch.setattr(
+        wapor_v3,
+        "_read_raster_metadata",
+        lambda url: {"unit": "mm/dekad", "scale_factor": 0.1, "offset": 0.0, "nodata": -9999},
+    )
+    monkeypatch.setattr(
         "app.geospatial.preprocessing.read_scene_window",
         lambda **kwargs: Reading(),
     )
@@ -113,6 +118,7 @@ def test_field_window_masks_outside_field_and_preserves_raw_units(monkeypatch):
     )
     assert result.valid_pixel_count == 2
     assert result.raw_mean == 2.0
-    assert result.unit is None
-    assert result.scale_factor is None
+    assert result.unit == "mm/dekad"
+    assert result.scale_factor == 0.1
+    assert result.offset == 0.0
     assert np.isnan(result.array[0, 1])
