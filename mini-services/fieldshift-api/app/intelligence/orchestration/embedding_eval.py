@@ -57,6 +57,7 @@ def evaluate_rankings(
     if any(
         not isinstance(relevant_document_ids[qid], (set, list, tuple))
         or not relevant_document_ids[qid]
+        or any(not isinstance(doc_id, str) or not doc_id.strip() for doc_id in relevant_document_ids[qid])
         for qid in query_ids
     ):
         raise ValueError("every benchmark query must have at least one relevant document")
@@ -76,7 +77,7 @@ def evaluate_rankings(
         ranking = rankings[qid]
         if len(ranking) != len(document_ids) or set(ranking) != doc_set:
             raise ValueError("each ranking must contain every benchmark document exactly once")
-        relevant = relevant_document_ids[qid]
+        relevant = set(relevant_document_ids[qid])
         if not relevant <= doc_set:
             raise ValueError("relevance judgement references an unknown document")
         first_rank = next((rank for rank, doc_id in enumerate(ranking, start=1) if doc_id in relevant), None)
