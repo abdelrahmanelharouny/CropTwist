@@ -43,6 +43,7 @@ class WaPORRasterWindow:
     scaled_median: float | None
     period_code: str | None
     metadata_reference: str
+    license: str
     asset_layout: str | None
     overview_levels: tuple[int, ...]
     resolution_m: int
@@ -285,6 +286,7 @@ class WaPORV3Client:
             crs=reading.crs,
             source_url=download_url,
             metadata_reference=product.metadata_reference,
+            license=product.license,
             asset_layout=raster_metadata.get("layout") if isinstance(raster_metadata.get("layout"), str) else None,
             overview_levels=tuple(raster_metadata.get("overview_levels") or ()),
         )
