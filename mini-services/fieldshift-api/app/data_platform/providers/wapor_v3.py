@@ -35,6 +35,25 @@ from app.data_platform.providers.wapor_v3_catalog import get_product
 API_ROOT = "https://data.apps.fao.org/gismgr/api/v2/catalog/workspaces/WAPOR-3/mapsets"
 API_HOST = "data.apps.fao.org"
 RASTER_HOSTS = frozenset({"storage.googleapis.com"})
+
+_RASTER_BUCKET_PREFIX = "/fao-gismgr-wapor-3-data/"
+
+
+def _safe_raster_url(url: str) -> bool:
+    """Accept only public FAO WaPOR objects in the documented GCS bucket."""
+    if not isinstance(url, str):
+        return False
+    parsed = urlsplit(url)
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname in RASTER_HOSTS
+        and parsed.port in (None, 443)
+        and parsed.username is None
+        and parsed.password is None
+        and parsed.path.startswith(_RASTER_BUCKET_PREFIX)
+        and parsed.path != _RASTER_BUCKET_PREFIX
+        and not parsed.fragment
+    )
 _MAX_PAGES = 50
 _MAX_RESPONSE_BYTES = 8_000_000
 _CODE_RE = re.compile(r"^L[12]-[A-Z0-9-]{2,40}$")
@@ -206,8 +225,7 @@ class WaPORV3Client:
             if raster_code in seen_raster_codes:
                 raise WaPORProviderError("FAO API returned a duplicate raster identifier")
             seen_raster_codes.add(raster_code)
-            parsed = urlsplit(download_url)
-            if parsed.scheme != "https" or parsed.hostname not in RASTER_HOSTS or parsed.port not in (None, 443) or parsed.username or parsed.password:
+            if not _safe_raster_url(download_url):
                 continue
             result.append({
                 "code": raster_code,
@@ -243,18 +261,14 @@ class WaPORV3Client:
         product = get_product(code)
         download_url = raster.get("download_url") if isinstance(raster, dict) else None
         raster_code = raster.get("code") if isinstance(raster, dict) else None
-        parsed = urlsplit(download_url) if isinstance(download_url, str) else None
+        period_code = raster.get("period_code") if isinstance(raster, dict) else None
         if (
             not isinstance(raster_code, str)
-            or not re.fullmatch(r"WAPOR-3\." + re.escape(code) + r"\.\d{4}-\d{2}-D[1-3]", raster_code)
-            or parsed is None
-            or parsed.scheme != "https"
-            or parsed.hostname not in RASTER_HOSTS
-            or parsed.port not in (None, 443)
-            or parsed.username
-            or parsed.password
+            or not re.fullmatch(r"WAPOR-3\\." + re.escape(code) + r"\\.\\d{4}-\\d{2}-D[1-3]", raster_code)
+            or period_code != raster_code.rsplit(".", 1)[-1]
+            or not _safe_raster_url(download_url)
         ):
-            raise ValueError("raster must be a catalogue record with a trusted FAO GeoTIFF URL")
+            raise ValueError("raster must be a catalogue record with a trusted FAO GeoTIFF URL and matching period")
         try:
             raster_metadata = _read_raster_metadata(download_url)
             if not raster_metadata.get("is_tiled"):
