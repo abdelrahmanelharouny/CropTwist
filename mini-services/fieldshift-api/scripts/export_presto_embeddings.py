@@ -42,6 +42,8 @@ def load_crop_history_jsonl(path: Path) -> list[CropHistoryRecord]:
                     f"invalid CropHistoryRecord at line {line_number}: {type(exc).__name__}"
                 ) from None
             records.append(record)
+            if len(records) > 4096:
+                raise ValueError("input JSONL exceeds the 4096-record export bound")
     if not records:
         raise ValueError("input JSONL contains no crop-history records")
     return records
