@@ -63,7 +63,7 @@ def _training_metadata(record: CropHistoryRecord, *, model_id: str) -> dict[str,
         or not record.label_license
         or not record.label_license_verified
     ):
-        raise ValueError(f"field {record.field_id} lacks verified crop-label provenance")
+        raise ValueError(f"field {record.field_id} requires a verified crop label and license")
     return {
         "field_id": record.field_id,
         "farm_group_id": record.farm_group_id,
