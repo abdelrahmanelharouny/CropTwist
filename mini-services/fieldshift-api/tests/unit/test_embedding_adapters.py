@@ -88,3 +88,26 @@ def test_local_adapter_rejects_invalid_embedding_vectors(monkeypatch, vector, me
     )
     with pytest.raises(ValueError, match=message):
         asyncio.run(FastEmbedMultilingualMiniLMProvider().embed(["test"]))
+
+
+@pytest.mark.parametrize(
+    "vector, message",
+    [
+        ([0.1, 0.2], "dimension"),
+        ([float("nan")] * 384, "non-finite"),
+        ([0.0] * 384, "zero-norm"),
+    ],
+)
+def test_local_adapter_rejects_invalid_embedding_vectors(monkeypatch, vector, message):
+    class BadModel:
+        def embed(self, texts):
+            return [_FakeVector(vector) for _ in texts]
+
+    monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", True)
+    monkeypatch.setattr(
+        FastEmbedMultilingualMiniLMProvider,
+        "_load_model",
+        staticmethod(lambda model_name, cache_dir, threads: BadModel()),
+    )
+    with pytest.raises(ValueError, match=message):
+        asyncio.run(FastEmbedMultilingualMiniLMProvider().embed(["test"]))
