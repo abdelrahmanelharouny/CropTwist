@@ -422,11 +422,16 @@ class WaPORV3Provider:
                     continue
                 if period_end < start_utc or period_start > end_utc:
                     continue
-                selected.append((raster, period_start, period_end))
+                partial_period = period_start.date() < start_utc.date() or period_end.date() > end_utc.date()
+                if partial_period:
+                    warnings.append(
+                        f"Requested range intersects a partial dekad for {variable}; full dekadal observation returned."
+                    )
+                selected.append((raster, period_start, period_end, partial_period))
             if not selected:
                 warnings.append(f"No WaPOR rasters found for {variable} in the requested date range.")
                 continue
-            for raster, period_start, period_end in selected:
+            for raster, period_start, period_end, partial_period in selected:
                 rasters_seen += 1
                 try:
                     window = self.client.read_field_window(
@@ -485,6 +490,7 @@ class WaPORV3Provider:
                         "overview_levels": list(window.overview_levels),
                         "license": window.license,
                         "metadata_reference": window.metadata_reference,
+                        "requested_range_partial_period": partial_period,
                     },
                     quality_flags=([{"code": "no_valid_pixels", "message": "No valid WaPOR pixels intersect the field."}] if is_missing else []),
                 ))
