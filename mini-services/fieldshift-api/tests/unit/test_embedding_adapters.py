@@ -61,5 +61,6 @@ def test_pinned_fastembed_registry_contains_selected_multilingual_model():
     )
     assert selected["dim"] == 384
     assert "Multilingual" in selected["description"]
+    assert "512 input tokens" in selected["description"]
     assert selected["license"] == "apache-2.0"
     assert selected["size_in_GB"] <= 0.25
