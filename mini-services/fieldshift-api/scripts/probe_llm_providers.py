@@ -14,7 +14,15 @@ from app.intelligence.orchestration.provider_diagnostics import probe_provider
 
 
 async def _run(names: list[str]) -> list[dict[str, object]]:
-    return [await probe_provider(name) for name in names]
+    # Probe configured vendors concurrently; each call still has its own hard
+    # timeout. asyncio.gather preserves the requested output order.
+    semaphore = asyncio.Semaphore(3)
+
+    async def bounded(name: str) -> dict[str, object]:
+        async with semaphore:
+            return await probe_provider(name)
+
+    return list(await asyncio.gather(*(bounded(name) for name in names)))
 
 
 def main() -> int:
