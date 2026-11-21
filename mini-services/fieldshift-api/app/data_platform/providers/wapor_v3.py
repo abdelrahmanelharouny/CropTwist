@@ -70,7 +70,16 @@ def _read_raster_metadata(url: str) -> dict[str, Any]:
             offset = float(offset_raw) if offset_raw is not None else None
         except (TypeError, ValueError):
             offset = None
-        return {"unit": unit, "scale_factor": scale, "offset": offset, "nodata": dataset.nodata}
+        image_structure = dataset.tags(ns="IMAGE_STRUCTURE")
+        return {
+            "unit": unit,
+            "scale_factor": scale,
+            "offset": offset,
+            "nodata": dataset.nodata,
+            "is_tiled": bool(dataset.is_tiled),
+            "overview_levels": dataset.overviews(1),
+            "layout": image_structure.get("LAYOUT"),
+        }
 
 
 class WaPORV3Client:
@@ -212,6 +221,8 @@ class WaPORV3Client:
             raise ValueError("raster must be a catalogue record with a trusted FAO COG URL")
         try:
             raster_metadata = _read_raster_metadata(download_url)
+            if not raster_metadata.get("is_tiled"):
+                raise WaPORProviderError("FAO raster is not tiled; refusing an unbounded whole-scene read")
             reading = read_scene_window(
                 assets={"wapor": download_url},
                 surfaces=("wapor",),
