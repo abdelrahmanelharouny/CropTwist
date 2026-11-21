@@ -103,7 +103,7 @@ class WaPORV3Client:
     @staticmethod
     def _safe_api_url(url: str) -> str:
         parsed = urlsplit(url)
-        if parsed.scheme != "https" or parsed.hostname != API_HOST or parsed.username or parsed.password:
+        if parsed.scheme != "https" or parsed.hostname != API_HOST or parsed.port not in (None, 443) or parsed.username or parsed.password:
             raise WaPORProviderError("FAO API pagination returned an untrusted URL")
         if not parsed.path.startswith("/gismgr/api/v2/catalog/workspaces/WAPOR-3/"):
             raise WaPORProviderError("FAO API pagination escaped the WaPOR v3 catalogue")
@@ -179,7 +179,7 @@ class WaPORV3Client:
             if not isinstance(raster_code, str) or not isinstance(download_url, str):
                 continue
             parsed = urlsplit(download_url)
-            if parsed.scheme != "https" or parsed.hostname not in RASTER_HOSTS:
+            if parsed.scheme != "https" or parsed.hostname not in RASTER_HOSTS or parsed.port not in (None, 443) or parsed.username or parsed.password:
                 continue
             period_code = raster_code.split(".", 2)[-1]
             if not re.fullmatch(r"\d{4}-\d{2}-D[1-3]", period_code):
@@ -221,6 +221,9 @@ class WaPORV3Client:
             or parsed is None
             or parsed.scheme != "https"
             or parsed.hostname not in RASTER_HOSTS
+            or parsed.port not in (None, 443)
+            or parsed.username
+            or parsed.password
         ):
             raise ValueError("raster must be a catalogue record with a trusted FAO COG URL")
         try:
@@ -245,8 +248,6 @@ class WaPORV3Client:
             values = raw[valid]
         except WaPORProviderError:
             raise
-        except WaPORProviderError:
-            raise
         except Exception:
             raise WaPORProviderError("FAO raster could not be read for the requested field") from None
         if values.size:
@@ -267,8 +268,19 @@ class WaPORV3Client:
             unit = product.unit
         if not isinstance(offset, (int, float)) and isinstance(scale, (int, float)) and unit:
             offset = 0.0
-        scaled_mean = mean * float(scale) + float(offset) if mean is not None and isinstance(scale, (int, float)) and isinstance(offset, (int, float)) and unit else None
-        scaled_median = median * float(scale) + float(offset) if median is not None and isinstance(scale, (int, float)) and isinstance(offset, (int, float)) and unit else None
+        import math
+
+        scale_valid = isinstance(scale, (int, float)) and not isinstance(scale, bool) and math.isfinite(float(scale)) and float(scale) > 0
+        offset_valid = isinstance(offset, (int, float)) and not isinstance(offset, bool) and math.isfinite(float(offset))
+        unit_valid = isinstance(unit, str) and bool(unit.strip()) and unit.strip().casefold() not in {"1", "unitless", "unknown"}
+        if not scale_valid:
+            scale = None
+        if not offset_valid:
+            offset = None
+        if scale_valid and offset is None and unit_valid:
+            offset = 0.0
+        scaled_mean = mean * float(scale) + float(offset) if mean is not None and scale_valid and offset is not None and unit_valid else None
+        scaled_median = median * float(scale) + float(offset) if median is not None and scale_valid and offset is not None and unit_valid else None
         return WaPORRasterWindow(
             mapset_code=code,
             raster_code=raster_code,
