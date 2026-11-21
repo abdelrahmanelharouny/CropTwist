@@ -1,6 +1,6 @@
 """Local CPU embeddings for multilingual knowledge retrieval.
 
-Document and query prefixes follow the multilingual E5 retrieval convention.
+Uses a compact multilingual sentence-transformer model supported natively by FastEmbed.
 Inference runs locally; no user text is sent to a remote embedding API.
 """
 from __future__ import annotations
@@ -46,10 +46,10 @@ class FastEmbedE5Provider:
         return result
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        return await asyncio.to_thread(self._encode, texts, prefix="passage: ")
+        return await asyncio.to_thread(self._encode, texts, prefix="")
 
     async def embed_query(self, text: str) -> list[float]:
-        vectors = await asyncio.to_thread(self._encode, [text], prefix="query: ")
+        vectors = await asyncio.to_thread(self._encode, [text], prefix="")
         return vectors[0]
 
 
