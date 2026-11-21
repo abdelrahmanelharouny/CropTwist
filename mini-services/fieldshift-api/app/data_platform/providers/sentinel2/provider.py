@@ -239,50 +239,153 @@ class Sentinel2StacProvider:
         max_cloud_cover: float = DEFAULT_MAX_CLOUD,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """STAC item search over the field geometry (metadata only)."""
-        from shapely.geometry import shape
-
+        """STAC item search with bounded, same-origin pagination."""
         bbox = _bbox_of_geojson(geometry_geojson)
         if bbox is None:
             raise ProviderRequestError(
                 "Field geometry could not be converted to a STAC bbox.",
                 details=[{"field": "geometry", "reason": "unsupported or empty geometry"}],
             )
-        payload = {
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ProviderRequestError(
+                "Sentinel-2 STAC page size must be a positive integer.",
+                details=[{"field": "limit", "reason": "expected a positive integer"}],
+            )
+        try:
+            cloud_cover = float(max_cloud_cover)
+        except (TypeError, ValueError) as exc:
+            raise ProviderRequestError(
+                "Sentinel-2 maximum cloud cover must be numeric.",
+                details=[{"field": "max_cloud_cover", "reason": "expected a number"}],
+            ) from exc
+        if not 0.0 <= cloud_cover <= 100.0:
+            raise ProviderRequestError(
+                "Sentinel-2 maximum cloud cover must be between 0 and 100.",
+                details=[{"field": "max_cloud_cover", "reason": "outside supported range"}],
+            )
+        page_size = min(limit, 200)
+        max_items = 2000
+        max_pages = 20
+        payload: dict[str, Any] = {
             "collections": [DEFAULT_COLLECTION],
             "bbox": bbox,
             "datetime": f"{start.strftime('%Y-%m-%dT%H:%M:%SZ')}/{end.strftime('%Y-%m-%dT%H:%M:%SZ')}",
-            "limit": min(max(1, limit), 200),
-            "query": {"eo:cloud_cover": {"lt": max(0.0, min(100.0, max_cloud_cover))}},
+            "limit": page_size,
+            "query": {"eo:cloud_cover": {"lt": cloud_cover}},
         }
-        url = f"{self._stac_base_url()}{STAC_SEARCH_PATH}"
-        try:
-            client = self._client or httpx
-            response = client.post(
-                url,
-                json=payload,
-                headers=self._auth_headers(),
-                timeout=SEARCH_TIMEOUT_SECONDS,
-            )
-            response.raise_for_status()
-            body = response.json()
-        except httpx.HTTPError as exc:
-            raise ProviderUnavailable(
-                "Sentinel-2 STAC search failed (network or API error).",
-                details=[{"reason": str(exc)}],
-            ) from exc
-        except ValueError as exc:
+        base_url = self._stac_base_url()
+        origin = urlsplit(base_url)
+        if origin.scheme.lower() != "https" or not origin.hostname:
             raise ProviderRequestError(
-                "Sentinel-2 STAC search returned a malformed response.",
-                details=[{"reason": str(exc)}],
-            ) from exc
-        features = body.get("features")
-        if not isinstance(features, list):
-            raise ProviderRequestError(
-                "STAC response has no 'features' array.",
-                details=[{"reason": "unexpected STAC payload shape"}],
+                "Sentinel-2 STAC endpoint must use HTTPS.",
+                details=[{"field": "stac_base_url", "reason": "HTTPS endpoint required"}],
             )
-        return features
+        headers = self._auth_headers()
+        client = self._client or httpx
+        next_request: tuple[str, str, dict[str, Any] | None] = (
+            "POST", f"{base_url}{STAC_SEARCH_PATH}", payload
+        )
+        visited: set[tuple[str, str, str]] = set()
+        collected: list[dict[str, Any]] = []
+        for _ in range(max_pages):
+            method, url, request_body = next_request
+            parsed = urlsplit(url)
+            if (
+                parsed.scheme.lower() != "https"
+                or (parsed.hostname or "").lower() != (origin.hostname or "").lower()
+                or parsed.port not in (None, 443)
+                or origin.port not in (None, 443)
+                or parsed.username
+                or parsed.password
+            ):
+                raise ProviderRequestError(
+                    "Sentinel-2 STAC pagination returned an untrusted URL.",
+                    details=[{"reason": "pagination must remain on the configured HTTPS origin"}],
+                )
+            body_key = repr(sorted(request_body.items())) if request_body else ""
+            visit_key = (method, url, body_key)
+            if visit_key in visited:
+                raise ProviderRequestError(
+                    "Sentinel-2 STAC pagination loop detected.",
+                    details=[{"reason": "repeated pagination request"}],
+                )
+            visited.add(visit_key)
+            try:
+                if method == "POST":
+                    response = client.post(
+                        url, json=request_body, headers=headers, timeout=SEARCH_TIMEOUT_SECONDS
+                    )
+                else:
+                    response = client.get(
+                        url, headers=headers, timeout=SEARCH_TIMEOUT_SECONDS
+                    )
+                response.raise_for_status()
+                body = response.json()
+            except httpx.HTTPError as exc:
+                raise ProviderUnavailable(
+                    "Sentinel-2 STAC search failed (network or API error).",
+                    details=[{"reason": str(exc)}],
+                ) from exc
+            except ValueError as exc:
+                raise ProviderRequestError(
+                    "Sentinel-2 STAC search returned a malformed response.",
+                    details=[{"reason": str(exc)}],
+                ) from exc
+            if not isinstance(body, dict) or not isinstance(body.get("features"), list):
+                raise ProviderRequestError(
+                    "STAC response has no 'features' array.",
+                    details=[{"reason": "unexpected STAC payload shape"}],
+                )
+            features = body["features"]
+            if any(not isinstance(feature, dict) for feature in features):
+                raise ProviderRequestError(
+                    "STAC response contains an invalid feature.",
+                    details=[{"reason": "features must be objects"}],
+                )
+            remaining = max_items - len(collected)
+            collected.extend(features[:remaining])
+            if len(collected) >= max_items:
+                return collected
+            links = body.get("links", [])
+            if not isinstance(links, list):
+                raise ProviderRequestError(
+                    "STAC response has an invalid links array.",
+                    details=[{"reason": "links must be an array"}],
+                )
+            next_links = [
+                link for link in links
+                if isinstance(link, dict) and link.get("rel") == "next"
+            ]
+            if not next_links:
+                return collected
+            link = next_links[0]
+            href = link.get("href")
+            if not isinstance(href, str) or not href.strip():
+                raise ProviderRequestError(
+                    "STAC next link is missing a valid href.",
+                    details=[{"reason": "invalid pagination link"}],
+                )
+            method_value = link.get("method", "GET")
+            if not isinstance(method_value, str) or method_value.upper() not in {"GET", "POST"}:
+                raise ProviderRequestError(
+                    "STAC next link uses an unsupported HTTP method.",
+                    details=[{"reason": "only GET and POST pagination are supported"}],
+                )
+            next_body = link.get("body") if method_value.upper() == "POST" else None
+            if next_body is not None and not isinstance(next_body, dict):
+                raise ProviderRequestError(
+                    "STAC next link contains an invalid POST body.",
+                    details=[{"reason": "pagination body must be an object"}],
+                )
+            next_request = (
+                method_value.upper(),
+                urljoin(url, href),
+                next_body,
+            )
+        raise ProviderUnavailable(
+            "Sentinel-2 STAC pagination exceeded the safety page limit.",
+            details=[{"max_pages": max_pages, "max_items": max_items}],
+        )
 
     # ------------------------------------------------------- observations
     def fetch_observations(
