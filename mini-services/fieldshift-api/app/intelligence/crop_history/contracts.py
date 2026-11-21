@@ -68,6 +68,8 @@ class CropHistoryRecord(BaseModel):
     def validate_label_and_months(self) -> "CropHistoryRecord":
         if self.season_end < self.season_start:
             raise ValueError("season_end must not precede season_start")
+        if (self.centroid_lat is None) != (self.centroid_lon is None):
+            raise ValueError("field centroid latitude and longitude must be supplied together")
         if (self.label_crop_code is None) != (self.label_source is None):
             raise ValueError("crop label and its source must be supplied together")
         if self.label_crop_code is None and self.label_confidence is not None:
