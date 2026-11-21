@@ -673,6 +673,20 @@ def _observations_from_item(
         }
     except ProviderUnavailable:
         raise
+    except ValueError as exc:
+        # Preserve the actionable radiometry failure without exposing asset URLs
+        # or any signed credentials that may appear in lower-level exceptions.
+        if "has no offset metadata and the scene has no Sentinel-2 processing baseline" in str(exc):
+            raise ProviderUnavailable(
+                f"Scene {scene_id} has no Sentinel-2 processing baseline or per-band offset metadata; "
+                "refusing an unverified reflectance conversion.",
+                details=[{"scene_id": scene_id, "reason": "missing_sentinel2_radiometric_offset"}],
+            ) from exc
+        raise ProviderUnavailable(
+            f"Scene {scene_id} could not be read or validated (ValueError); verify provider access, "
+            "raster CRS, QA assets and radiometric metadata.",
+            details=[{"scene_id": scene_id, "reason": "ValueError"}],
+        ) from exc
     except Exception as exc:  # noqa: BLE001 — network/raster failures degrade per scene
         # Raster/GDAL errors can echo signed asset URLs. Keep secrets out of
         # API responses, persisted job details and logs.
