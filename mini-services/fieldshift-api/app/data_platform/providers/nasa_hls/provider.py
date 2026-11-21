@@ -108,10 +108,24 @@ class NasaHlsProvider:
             )
         scene_ids = options.get("scene_ids")
         if scene_ids is not None:
-            if not isinstance(scene_ids, list) or not all(isinstance(s, str) and s for s in scene_ids):
+            if (
+                not isinstance(scene_ids, list)
+                or not scene_ids
+                or any(
+                    not isinstance(scene_id, str)
+                    or not scene_id.strip()
+                    or len(scene_id) > 256
+                    for scene_id in scene_ids
+                )
+            ):
                 raise ProviderRequestError(
-                    "scene_ids must be a non-empty list of scene identifiers.",
-                    details=[{"field": "scene_ids", "reason": "invalid shape"}],
+                    "scene_ids must be a non-empty list of bounded scene identifiers.",
+                    details=[{"field": "scene_ids", "reason": "invalid shape or identifier"}],
+                )
+            if len(scene_ids) != len(set(scene_ids)):
+                raise ProviderRequestError(
+                    "scene_ids must not contain duplicate identifiers.",
+                    details=[{"field": "scene_ids", "reason": "duplicate scene id"}],
                 )
             if len(scene_ids) > settings.nasa_hls_max_scenes_per_job:
                 raise ProviderRequestError(
