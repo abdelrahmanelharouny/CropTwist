@@ -41,3 +41,12 @@ def test_ret_resolution_and_product_units_are_not_misrepresented():
     assert aeti.scale_factor == 0.1
     assert rsm.unit == "%"
     assert rsm.scale_factor == 0.001
+
+def test_wapor_canonical_variables_keep_distinct_physical_meanings_and_units():
+    from app.data_platform.contracts.variables import VARIABLE_CATALOG
+
+    assert VARIABLE_CATALOG["actual_evapotranspiration_interception"].unit == "mm/day"
+    assert VARIABLE_CATALOG["actual_evapotranspiration_interception"].typical_time_support == "dekadal"
+    assert VARIABLE_CATALOG["relative_soil_moisture"].unit == "%"
+    assert VARIABLE_CATALOG["relative_soil_moisture"].code != "soil_moisture_surface"
+    assert VARIABLE_CATALOG["net_primary_productivity"].unit == "gC/m2/day"
