@@ -453,9 +453,11 @@ def test_raster_metadata_reads_gdal_scale_and_offset_and_marks_malformed_tags(mo
         def tags(self, band=None, ns=None):
             if ns == "IMAGE_STRUCTURE":
                 return {"LAYOUT": "COG"}
-            return {"scale_factor": "not-a-number"}
+            return {"scale_factor": "not-a-number", "offset": "not-a-number"}
 
     monkeypatch.setitem(sys.modules, "rasterio", SimpleNamespace(open=lambda _url: MalformedDataset()))
     malformed = wapor_v3._read_raster_metadata("https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif")
     assert malformed["scale_factor"] is None
     assert malformed["scale_metadata_invalid"] is True
+    assert malformed["offset"] is None
+    assert malformed["offset_metadata_invalid"] is True
