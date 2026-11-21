@@ -411,3 +411,51 @@ def test_read_field_window_accepts_canonical_period_code(monkeypatch):
     )
     assert result.valid_pixel_count == 1
     assert result.period_code == "2025-01-D1"
+
+
+
+def test_raster_metadata_reads_gdal_scale_and_offset_and_marks_malformed_tags(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    class Dataset:
+        units = ("mm/day",)
+        scales = (0.2,)
+        offsets = (0.25,)
+        nodata = -9999
+        is_tiled = True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def tags(self, band=None, ns=None):
+            if ns == "IMAGE_STRUCTURE":
+                return {"LAYOUT": "COG"}
+            return {}
+
+        def overviews(self, band):
+            return [2, 4]
+
+    monkeypatch.setitem(sys.modules, "rasterio", SimpleNamespace(open=lambda _url: Dataset()))
+    metadata = wapor_v3._read_raster_metadata("https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif")
+    assert metadata["scale_factor"] == 0.2
+    assert metadata["offset"] == 0.25
+    assert metadata["scale_metadata_invalid"] is False
+    assert metadata["offset_metadata_invalid"] is False
+
+    class MalformedDataset(Dataset):
+        scales = (1.0,)
+        offsets = (0.0,)
+
+        def tags(self, band=None, ns=None):
+            if ns == "IMAGE_STRUCTURE":
+                return {"LAYOUT": "COG"}
+            return {"scale_factor": "not-a-number"}
+
+    monkeypatch.setitem(sys.modules, "rasterio", SimpleNamespace(open=lambda _url: MalformedDataset()))
+    malformed = wapor_v3._read_raster_metadata("https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif")
+    assert malformed["scale_factor"] is None
+    assert malformed["scale_metadata_invalid"] is True
