@@ -5,6 +5,7 @@ import math
 from typing import Any
 
 EMBEDDING_DIM = 128
+MAX_FLOAT32_VALUE = 3.4028234663852886e38
 ALLOWED_LABEL_SOURCES = frozenset({
     "verified_farmer_record",
     "official_statistics",
@@ -70,8 +71,13 @@ def validate_training_rows(rows: list[dict[str, Any]]) -> None:
         embedding = row.get("embedding")
         if not isinstance(embedding, (list, tuple)) or len(embedding) != EMBEDDING_DIM:
             raise ValueError(f"row {index} must contain a {EMBEDDING_DIM}-D Presto embedding")
-        if any(not _is_finite_numeric(value) for value in embedding):
-            raise ValueError(f"row {index} contains non-finite or non-numeric embedding values")
+        if any(
+            not _is_finite_numeric(value) or abs(float(value)) > MAX_FLOAT32_VALUE
+            for value in embedding
+        ):
+            raise ValueError(
+                f"row {index} contains non-finite, non-numeric, or float32-unrepresentable embedding values"
+            )
         regions.add(row["region_id"])
         classes.add(row["crop_code"])
     if len(regions) < 3:
