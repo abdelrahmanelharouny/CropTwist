@@ -1,4 +1,4 @@
-"""Read-only FAO WaPOR v3 catalogue and bounded COG field-window access.
+"""Read-only FAO WaPOR v3 catalogue and bounded tiled GeoTIFF field-window access.
 
 The FAO v3 API is public and does not require a token. Raster values remain
 raw until the corresponding live mapset/raster metadata establishes scale
@@ -43,6 +43,8 @@ class WaPORRasterWindow:
     scaled_median: float | None
     period_code: str | None
     metadata_reference: str
+    asset_layout: str | None
+    overview_levels: tuple[int, ...]
     resolution_m: int
     crs: str
     source_url: str
@@ -283,4 +285,6 @@ class WaPORV3Client:
             crs=reading.crs,
             source_url=download_url,
             metadata_reference=product.metadata_reference,
+            asset_layout=raster_metadata.get("layout") if isinstance(raster_metadata.get("layout"), str) else None,
+            overview_levels=tuple(raster_metadata.get("overview_levels") or ()),
         )
