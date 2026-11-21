@@ -17,20 +17,20 @@ does not install PyTorch or TorchGeo.
 The adapter prepares one 12-month sequence per field with the upstream 17
 channels, in order:
 
-1. Sentinel-1 VV, VH
-2. Sentinel-2 B2, B3, B4, B5, B6, B7, B8, B8A, B11, B12
-3. ERA5 2 m temperature and total precipitation
-4. SRTM elevation and slope
+1. Sentinel-1 VV/VH in dB
+2. Sentinel-2 B2/B3/B4/B5/B6/B7/B8/B8A/B11/B12 as scaled integer reflectance DN (not physical 0–1 reflectance)
+3. ERA5 2 m temperature in Kelvin and total precipitation in metres
+4. SRTM elevation in metres and slope in degrees
 5. NDVI derived from B8 and B4
 
-Normalization follows the upstream Presto pipeline: S1 shift/divide 25;
-Sentinel-2 reflectance divide by 10,000; ERA5 temperature shift -272.15 and
+Normalization follows the upstream Presto pipeline: S1 dB shift/divide 25;
+Sentinel-2 reflectance DN divide by 10,000; ERA5 temperature shift -272.15 and
 divide by 35; precipitation divide by 0.03; SRTM elevation divide by 2,000;
 slope divide by 50. Missing observations are zero-filled only alongside an
 explicit per-channel mask. Dynamic World class 9 means unavailable. SRTM is
 represented as the single static token expected by the encoder.
 
-The field centroid is required and passed as latitude/longitude. Inputs outside
+The input field names carry units (`vv_db`, `b04_dn`, `temperature_2m_k`, `total_precipitation_m`, `elevation_m`, `slope_degrees`) to prevent mixing already-scaled reflectance with raw DN. The field centroid is required and passed as latitude/longitude. Inputs outside
 the 12-month sequence, invalid channel names, inconsistent static SRTM values,
 or records with no usable modality fail closed.
 
