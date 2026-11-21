@@ -32,12 +32,12 @@
 
 ### Lane A — CI and integration recovery
 - PR #5: merged as `aa56505`; exact-head backend and frontend CI both passed. Live CDSE/HLS acquisition remains unverified.
-- PR #11: current head `c5306c8`; frontend CI passed, backend pytest is running after two validation-message-only fixes. Keep Draft until backend finishes; numerical parity with upstream pretrained Presto is still a separate gate.
+- PR #11: current head `8d990844`; the prior backend run failed two regex-contract assertions because the error message word order changed. Corrected the message to preserve `numeric, not boolean` while retaining finite-value validation; new exact-head CI run #649 is in progress (backend + frontend). Keep Draft until backend finishes; numerical parity with upstream pretrained Presto is still a separate gate.
 - PR #12: exact-head CI passed. It now implements pinned multilingual E5 (not MiniLM), SHA-256 verification and task prefixes; real warmup plus an agronomist-judged Arabic/English retrieval benchmark remain required.
 - PR #13: exact-head CI passed. WaPOR live FAO raster smoke and live L2-RSM-D availability remain unverified.
 - PR #14: exact-head CI passed. Gemini/Groq/OpenRouter credentials and authenticated connectivity probes remain unverified.
 - PR #17: merged as `9e82c5a`; sensitive prompts are blocked from the legacy bridge unless the explicit external-provider approval gate is enabled.
-- PR #18: exact-head CI passed, but remains stacked on the old PR #17 branch. Rebase/retarget after the squash merge before considering merge; local Qwen model/runtime quality and latency are unverified.
+- PR #18: retargeted to `main`, but GitHub currently reports it non-mergeable. Comparison shows its diff contains the local-Qwen work plus overlapping legacy-bridge/privacy files; resolve/rebase that overlap before review. Local Qwen model/runtime quality and latency are unverified.
 
 ### Lane B — AI, privacy and evidence
 - E5 implementation is present on PR #12 with immutable revision/hash verification and `passage:`/`query:` prefixes. Still run actual model warmup and a reviewed bilingual agricultural corpus benchmark before enabling semantic retrieval.
@@ -74,16 +74,16 @@
 | PR | Exact head / result | Current decision |
 |---|---|---|
 | #5 M1-A | `b3487981` — backend + frontend CI passed; merged as `aa56505` | Integrated; live satellite credentials/smoke still required |
-| #11 M1-B Presto | `c5306c8b` — frontend passed; backend CI run #645 in progress | Hold Draft until backend is green and upstream pretrained-weight parity is demonstrated |
+| #11 M1-B Presto | `8d990844` — validation message corrected; CI run #649 in progress after prior two regex failures | Hold Draft until exact-head backend + frontend CI pass and upstream pretrained-weight parity is demonstrated |
 | #12 M1-C local E5 RAG | `531f30e5` — backend + frontend CI passed | Keep disabled pending warmup, reviewed corpus, bilingual retrieval metrics and host resource benchmark |
 | #13 M1-D WaPOR | `01c755b6` — backend + frontend CI passed | Keep live-data claims blocked pending FAO raster smoke and L2-RSM-D verification |
 | #14 M1-E provider diagnostics | `d1adf97c` — backend + frontend CI passed | Diagnostic code integrated only after merge; no provider is live-verified by mocked CI |
 | #17 legacy bridge privacy | `42aab384` — backend + frontend CI passed; merged as `9e82c5a` | Integrated; sensitive legacy-bridge traffic is fail-closed without explicit approval |
-| #18 local Qwen | `402cc65e` — backend + frontend CI passed | Stacked base still references pre-squash #17 branch; rebase/retarget required before merge |
-| #22 interval-valued soil scoring | `7dfe17a7` — backend + frontend CI passed | P2 review candidate; conservative bounds, no invented midpoint |
-| #23 analytics entitlement | `fb0432fd` — backend + frontend CI passed | P3 review candidate; server-side plan gate, no production mutation |
+| #18 local Qwen | `402cc65e` — prior exact-head CI passed; retargeted to `main`, currently non-mergeable | Resolve overlapping legacy-bridge/privacy diff and rerun CI before merge |
+| #22 interval-valued soil scoring | `7dfe17a7` — backend + frontend CI passed; retargeted to `main` | Revalidate CI against current base; conservative bounds, no invented midpoint |
+| #23 analytics entitlement | `fb0432fd` — backend + frontend CI passed; retargeted to `main` | Revalidate CI against current base; server-side plan gate, no production mutation |
 
-The GitHub workflow-run listing used for this snapshot exposes PR-triggered runs only; it does not establish the status of the post-merge `main` push workflow. Verify the resulting `main` CI separately before any release. PRs #11–14 still target the earlier `e32d0c3` base; re-check mergeability and exact-head CI after each sequential merge. PRs #22–23 target the pre-M1-A `5811036` baseline and also require post-merge integration review.
+The GitHub workflow-run listing used for this snapshot exposes PR-triggered runs only; it does not establish the status of the post-merge `main` push workflow. Verify the resulting `main` CI separately before any release. PRs #11–14 and #21–23 have now been retargeted to `main`; re-check exact-head CI after each base change and integrate sequentially. PR #18 is retargeted but still non-mergeable pending its overlapping bridge diff.
 
 ## Definition of done
 
