@@ -39,7 +39,7 @@ class AISettings(BaseSettings):
     # Exact requested defaults. Keys are SecretStr and are never returned by
     # health/status endpoints or included in logs.
     gemini_api_key: SecretStr = SecretStr("")
-    gemini_model: str = "gemini-3.6-flash"
+    gemini_model: str = "gemini-3.8-flash"
     groq_api_key: SecretStr = SecretStr("")
     groq_model: str = "openai/gpt-oss-120b"
     openrouter_api_key: SecretStr = SecretStr("")
