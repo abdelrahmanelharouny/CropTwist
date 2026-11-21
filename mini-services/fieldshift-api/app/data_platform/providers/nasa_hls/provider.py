@@ -274,6 +274,29 @@ class NasaHlsProvider:
         """
         scene_ids = options.get("scene_ids")
         scene_records = options.get("scene_records")
+        # Explicit selectors must never be silently ignored. In particular,
+        # malformed or empty scene_ids previously fell through to "all
+        # records", which could acquire more imagery than the caller asked for.
+        if scene_ids is not None:
+            if (
+                not isinstance(scene_ids, list)
+                or not scene_ids
+                or any(
+                    not isinstance(scene_id, str)
+                    or not scene_id.strip()
+                    or len(scene_id) > 256
+                    for scene_id in scene_ids
+                )
+            ):
+                raise ProviderRequestError(
+                    "scene_ids must be a non-empty list of bounded scene identifiers.",
+                    details=[{"field": "scene_ids", "reason": "invalid shape or identifier"}],
+                )
+            if len(scene_ids) != len(set(scene_ids)):
+                raise ProviderRequestError(
+                    "scene_ids must not contain duplicate identifiers.",
+                    details=[{"field": "scene_ids", "reason": "duplicate scene id"}],
+                )
         if scene_records is not None:
             if not isinstance(scene_records, dict) or not scene_records:
                 raise ProviderRequestError(
@@ -293,13 +316,8 @@ class NasaHlsProvider:
                         f"Scene record '{key}' is outside the requested time range.",
                         details=[{"field": "scene_records", "reason": "acquired_at outside requested range"}],
                     )
-            if isinstance(scene_ids, list) and scene_ids:
-                if len(scene_ids) != len(set(scene_ids)):
-                    raise ProviderRequestError(
-                        "scene_ids must not contain duplicate identifiers.",
-                        details=[{"field": "scene_ids", "reason": "duplicate scene id"}],
-                    )
-                missing = [s for s in scene_ids if s not in scene_records]
+            if scene_ids is not None:
+                missing = [scene_id for scene_id in scene_ids if scene_id not in scene_records]
                 if missing:
                     raise ProviderRequestError(
                         "scene_ids reference scenes without discovery metadata.",
@@ -310,7 +328,7 @@ class NasaHlsProvider:
                 ordered = sorted(scene_records.keys())
             return {k: scene_records[k] for k in ordered}
 
-        if not isinstance(scene_ids, list) or not scene_ids:
+        if scene_ids is None:
             # Bounded auto-discovery mode.
             if geometry_geojson is None:
                 raise ProviderRequestError(
