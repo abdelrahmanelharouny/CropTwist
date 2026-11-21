@@ -120,7 +120,7 @@ def test_training_metadata_rejects_integer_values_that_overflow_float_conversion
         _row("f3", "farm3", "mallawi", 2023, "clover"),
     ]
     rows[0]["valid_pixel_coverage"] = 10**10000
-    with pytest.raises(ValueError, match="numeric, finite"):
+    with pytest.raises(ValueError, match="numeric, not boolean, and finite"):
         validate_training_rows(rows)
 
     rows[0]["valid_pixel_coverage"] = 0.8
