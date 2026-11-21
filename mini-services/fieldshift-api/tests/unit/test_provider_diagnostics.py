@@ -75,7 +75,7 @@ def test_probe_uses_a_fresh_message_list_for_each_provider(monkeypatch):
         async def generate(self, messages, **kwargs):
             messages[-1]["content"] = "provider-mutated-this"
             class Result:
-                content = "ok"
+                content = "CROPTWIST_PROVIDER_OK"
                 model = "model"
             return Result()
 
