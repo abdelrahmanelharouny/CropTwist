@@ -62,14 +62,14 @@ async def probe_provider(name: str) -> dict[str, Any]:
             "provider_structured_output_schema_mismatch",
             "provider_invalid_stream_frame", "provider_stream_error",
             "provider_stream_incomplete", "provider_stream_interrupted",
-            "provider_stream_failed", "provider_safety_block",
+            "provider_stream_failed", "provider_cancelled", "provider_safety_block",
             "provider_output_truncated", "provider_incomplete_response",
             "provider_invalid_message_contract", "provider_empty_messages",
             "provider_empty_response", "provider_chain_unavailable",
             "provider_data_policy_blocked", "provider_chain_timeout",
             "provider_schema_unsupported_or_invalid",
         }
-        safe_category = category if category in safe_categories else "provider_probe_failed"
+        safe_category = category if isinstance(category, str) and category in safe_categories else "provider_probe_failed"
         return {
             "provider": provider.name,
             "model": getattr(provider, "model", None),
