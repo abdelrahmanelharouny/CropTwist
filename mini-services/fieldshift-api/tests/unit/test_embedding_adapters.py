@@ -20,7 +20,7 @@ class _FakeModel:
 
     def embed(self, texts):
         self.inputs.extend(texts)
-        return [_FakeVector([0.1, 0.2, 0.3]) for _ in texts]
+        return [_FakeVector([0.1] * 384) for _ in texts]
 
 
 def test_local_multilingual_document_and_query_embeddings(monkeypatch):
@@ -34,19 +34,20 @@ def test_local_multilingual_document_and_query_embeddings(monkeypatch):
     provider = FastEmbedMultilingualMiniLMProvider()
     documents = asyncio.run(provider.embed(["wheat irrigation"]))
     query = asyncio.run(provider.embed_query("متى أزرع القمح؟"))
-    assert documents == [[0.1, 0.2, 0.3]]
-    assert query == [0.1, 0.2, 0.3]
+    assert len(documents) == 1 and len(documents[0]) == 384
+    assert len(query) == 384
+    assert documents[0][0] == pytest.approx(0.1)
     assert model.inputs == ["wheat irrigation", "متى أزرع القمح؟"]
 
 
-def test_e5_adapter_is_disabled_by_default(monkeypatch):
+def test_local_minilm_adapter_is_disabled_by_default(monkeypatch):
     monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", False)
     provider = FastEmbedMultilingualMiniLMProvider()
     with pytest.raises(RuntimeError, match="disabled by configuration"):
         asyncio.run(provider.embed(["test"]))
 
 
-def test_e5_adapter_rejects_unbounded_batches(monkeypatch):
+def test_local_minilm_adapter_rejects_unbounded_batches(monkeypatch):
     monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", True)
     provider = FastEmbedMultilingualMiniLMProvider()
     with pytest.raises(ValueError, match="batch size"):
