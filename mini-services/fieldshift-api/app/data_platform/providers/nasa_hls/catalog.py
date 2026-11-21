@@ -127,16 +127,23 @@ def parse_stac_item(item: dict[str, Any]) -> tuple[HlsSceneRecord | None, list[s
         )
         return None, warnings
 
-    properties = item.get("properties") or {}
+    properties = item.get("properties")
+    if not isinstance(properties, dict):
+        warnings.append(f"Scene {scene_id}: malformed STAC properties; skipped.")
+        return None, warnings
     acquired_raw = properties.get("datetime")
     if not acquired_raw or not isinstance(acquired_raw, str):
         warnings.append(f"Scene {scene_id}: no acquisition timestamp; skipped.")
         return None, warnings
     try:
-        acquired_at = datetime.fromisoformat(acquired_raw.replace("Z", "+00:00")).astimezone(UTC)
+        parsed_acquired_at = datetime.fromisoformat(acquired_raw.replace("Z", "+00:00"))
     except ValueError:
         warnings.append(f"Scene {scene_id}: unparseable timestamp; skipped.")
         return None, warnings
+    if parsed_acquired_at.tzinfo is None or parsed_acquired_at.utcoffset() is None:
+        warnings.append(f"Scene {scene_id}: timezone-naive acquisition timestamp; skipped.")
+        return None, warnings
+    acquired_at = parsed_acquired_at.astimezone(UTC)
 
     cloud_cover = properties.get("eo:cloud_cover")
     if cloud_cover is not None:
@@ -154,7 +161,10 @@ def parse_stac_item(item: dict[str, Any]) -> tuple[HlsSceneRecord | None, list[s
             cloud_cover = None
 
     surface_assets = SURFACE_ASSETS_BY_COLLECTION[short_code]
-    assets = item.get("assets") or {}
+    assets = item.get("assets")
+    if not isinstance(assets, dict):
+        warnings.append(f"Scene {scene_id}: malformed STAC assets; skipped.")
+        return None, warnings
     asset_refs: dict[str, str] = {}
     band_mapping: dict[str, str] = {}
     for surface, asset_key in surface_assets.items():
