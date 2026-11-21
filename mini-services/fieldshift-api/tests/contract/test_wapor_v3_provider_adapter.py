@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.errors import InvalidDateRange, ProviderUnavailable, UnsupportedVariable
+from app.core.errors import ProviderUnavailable, UnsupportedVariable
 from app.data_platform.contracts.observations import AreaOfInterest, QualityStatus, TimeSupport
 from app.data_platform.providers.wapor_v3 import (
     WAPOR_EGYPT_L2_VARIABLE_MAP,
@@ -128,14 +128,14 @@ def test_wapor_fetch_rejects_unmapped_variable_and_non_egypt_level():
         )
 
 
-def test_wapor_fetch_rejects_naive_datetimes():
-    with pytest.raises(InvalidDateRange, match="timezone-aware"):
-        WaPORV3Provider(FakeClient()).fetch_observations(
-            area_of_interest=AreaOfInterest(geometry_geojson=GEOMETRY),
-            variables=["actual_evapotranspiration_interception"],
-            start=datetime(2025, 1, 1),
-            end=datetime(2025, 1, 10),
-        )
+def test_wapor_fetch_normalizes_naive_datetimes_as_utc():
+    result = WaPORV3Provider(FakeClient()).fetch_observations(
+        area_of_interest=AreaOfInterest(geometry_geojson=GEOMETRY),
+        variables=["actual_evapotranspiration_interception"],
+        start=datetime(2025, 1, 1),
+        end=datetime(2025, 1, 10),
+    )
+    assert result.observations[0].period_start.tzinfo == UTC
 
 
 def test_wapor_period_parser_handles_last_dekad_of_february():
