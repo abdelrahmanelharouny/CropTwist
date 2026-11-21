@@ -269,3 +269,88 @@ def test_wapor_provider_bounds_raster_window_before_reading():
             end=datetime(2025, 1, 10, tzinfo=UTC),
             options={"max_window_mb": 1024},
         )
+
+def test_all_reported_scale_and_unit_sources_must_agree(monkeypatch):
+    class Reading:
+        arrays = {"wapor": np.array([[2.0]])}
+        crs = "EPSG:32636"
+        transform = object()
+        width = 1
+        height = 1
+
+    monkeypatch.setattr(
+        wapor_v3,
+        "get_product",
+        lambda code: type("Product", (), {
+            "resolution_m": 100, "unit": "mm/day", "scale_factor": 0.1,
+            "metadata_reference": "https://example.org/spec", "license": "CC BY-SA 4.0",
+        })(),
+    )
+    monkeypatch.setattr(
+        wapor_v3,
+        "_read_raster_metadata",
+        lambda url: {"unit": "mm/dekad", "scale_factor": 0.2, "offset": 0.0, "is_tiled": True},
+    )
+    monkeypatch.setattr("app.geospatial.preprocessing.read_scene_window", lambda **kwargs: Reading())
+    monkeypatch.setattr(
+        "app.geospatial.preprocessing.field_mask_for_window",
+        lambda **kwargs: np.array([[True]]),
+    )
+    result = wapor_v3.WaPORV3Client().read_field_window(
+        mapset_code="L2-T-D",
+        raster={
+            "code": "WAPOR-3.L2-T-D.2025-01-D1",
+            "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
+            "unit": "mm/day",
+            "scale_factor": 0.1,
+            "offset": 0.0,
+        },
+        geometry_geojson={"type": "Polygon", "coordinates": []},
+    )
+    # The API agrees with the catalogue, but the GeoTIFF disagrees. Do not
+    # accept the first source and silently ignore the second.
+    assert result.scale_factor is None
+    assert result.unit is None
+    assert result.scaled_mean is None
+
+
+def test_malformed_catalogue_scale_and_unit_are_not_replaced_by_defaults(monkeypatch):
+    class Reading:
+        arrays = {"wapor": np.array([[2.0]])}
+        crs = "EPSG:32636"
+        transform = object()
+        width = 1
+        height = 1
+
+    monkeypatch.setattr(
+        wapor_v3,
+        "get_product",
+        lambda code: type("Product", (), {
+            "resolution_m": 100, "unit": "mm/day", "scale_factor": 0.1,
+            "metadata_reference": "https://example.org/spec", "license": "CC BY-SA 4.0",
+        })(),
+    )
+    monkeypatch.setattr(
+        wapor_v3,
+        "_read_raster_metadata",
+        lambda url: {"unit": None, "scale_factor": None, "offset": None, "is_tiled": True},
+    )
+    monkeypatch.setattr("app.geospatial.preprocessing.read_scene_window", lambda **kwargs: Reading())
+    monkeypatch.setattr(
+        "app.geospatial.preprocessing.field_mask_for_window",
+        lambda **kwargs: np.array([[True]]),
+    )
+    result = wapor_v3.WaPORV3Client().read_field_window(
+        mapset_code="L2-T-D",
+        raster={
+            "code": "WAPOR-3.L2-T-D.2025-01-D1",
+            "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
+            "unit": 123,
+            "scale_factor": "not-a-number",
+            "offset": 0.0,
+        },
+        geometry_geojson={"type": "Polygon", "coordinates": []},
+    )
+    assert result.scale_factor is None
+    assert result.unit is None
+    assert result.scaled_mean is None
