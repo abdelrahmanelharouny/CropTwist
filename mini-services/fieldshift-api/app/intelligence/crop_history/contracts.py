@@ -33,11 +33,15 @@ class MonthlyCropFeatures(BaseModel):
         if not isinstance(value, dict):
             raise ValueError("monthly feature maps must be objects")
         for name, item in value.items():
-            if item is not None and (
-                isinstance(item, bool)
-                or not isinstance(item, (int, float))
-                or not math.isfinite(float(item))
-            ):
+            if item is None:
+                continue
+            if isinstance(item, bool) or not isinstance(item, (int, float)):
+                raise ValueError(f"monthly feature {name} must be finite numeric data")
+            try:
+                finite = math.isfinite(float(item))
+            except (OverflowError, ValueError):
+                finite = False
+            if not finite:
                 raise ValueError(f"monthly feature {name} must be finite numeric data")
         return value
 
@@ -99,7 +103,11 @@ class CropHistoryRecord(BaseModel):
             return value
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError("record numeric metadata must be finite numeric values")
-        if not math.isfinite(float(value)):
+        try:
+            finite = math.isfinite(float(value))
+        except (OverflowError, ValueError):
+            finite = False
+        if not finite:
             raise ValueError("record numeric metadata must be finite numeric values")
         return value
 
