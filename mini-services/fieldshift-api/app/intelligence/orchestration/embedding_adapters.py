@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from functools import lru_cache
+import math
 from typing import Any
 
 from app.intelligence.config import ai_settings
@@ -14,6 +15,7 @@ from app.intelligence.config import ai_settings
 
 class FastEmbedMultilingualMiniLMProvider:
     name = "local-fastembed-multilingual-minilm"
+    expected_dimensions = 384
     model = ai_settings.ai_knowledge_embedding_model
 
     def __init__(self, *, threads: int = 2) -> None:
@@ -40,7 +42,14 @@ class FastEmbedMultilingualMiniLMProvider:
         result: list[list[float]] = []
         for vector in vectors:
             values = vector.tolist() if hasattr(vector, "tolist") else list(vector)
-            result.append([float(value) for value in values])
+            vector_values = [float(value) for value in values]
+            if len(vector_values) != self.expected_dimensions:
+                raise ValueError("embedding model returned an unexpected vector dimension")
+            if not all(math.isfinite(value) for value in vector_values):
+                raise ValueError("embedding model returned non-finite values")
+            if not any(value != 0.0 for value in vector_values):
+                raise ValueError("embedding model returned a zero-norm vector")
+            result.append(vector_values)
         if len(result) != len(texts):
             raise ValueError("embedding model returned an unexpected vector count")
         return result
