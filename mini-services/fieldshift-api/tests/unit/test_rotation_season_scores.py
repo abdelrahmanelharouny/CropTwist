@@ -374,3 +374,38 @@ def test_interval_trait_resolution_prefers_exact_regional_value_over_global():
         "root_depth_effective_m", "EG", direction="maximize"
     ) == 1.1
     assert crop.numeric_trait_bounds("root_depth_effective_m", "US") == (0.5, 1.0)
+
+
+
+def test_numeric_trait_bounds_reject_boolean_point_and_interval_values():
+    from app.rotation.problem import TraitValue
+
+    crop = _crossing_problem().knowledge.crops["barley"]
+
+    def trait(code, point=None, low=None, high=None):
+        return TraitValue(
+            trait_code=code,
+            value_numeric=point,
+            value_text=None,
+            value_low=low,
+            value_high=high,
+            unit="m",
+            region_code=None,
+            evidence_class="published_reference",
+            confidence="low",
+            validation_status="reference",
+            source_key=f"source-{code}",
+            citation_text=f"Source {code}",
+            pack_code="kp",
+            pack_version="kp-test-1.0",
+        )
+
+    crop.traits["boolean_point"] = trait("boolean_point", point=True)
+    crop.traits["boolean_low"] = trait("boolean_low", low=True, high=1.5)
+    crop.traits["boolean_high"] = trait("boolean_high", low=0.5, high=False)
+
+    assert crop.numeric_trait("boolean_point") is None
+    assert crop.numeric_trait_bounds("boolean_point") is None
+    assert crop.numeric_trait_bounds("boolean_low") is None
+    assert crop.numeric_trait_bounds("boolean_high") is None
+    assert crop.conservative_numeric_trait("boolean_point") is None
