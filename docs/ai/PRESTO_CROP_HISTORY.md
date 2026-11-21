@@ -64,7 +64,7 @@ independence of labels are verified.
 
 Once verified labels and Presto embeddings are assembled into a CSV with
 `field_id`, `farm_group_id`, `region_id`, `season_year`, `crop_code`,
-`label_source`, `label_source_verified`, `label_license`,\n`label_license_verified`, `valid_pixel_coverage` and
+`label_source`, `label_source_verified`, `label_license`,\n`label_license_verified`, `valid_pixel_coverage`, `embedding_model`,\n`input_schema_version` and
 `embedding_0..embedding_127`, run:
 
 ```bash
