@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -126,24 +127,44 @@ def parse_stac_item(item: dict[str, Any]) -> tuple[HlsSceneRecord | None, list[s
         )
         return None, warnings
 
-    properties = item.get("properties") or {}
+    properties = item.get("properties")
+    if not isinstance(properties, dict):
+        warnings.append(f"Scene {scene_id}: malformed STAC properties; skipped.")
+        return None, warnings
     acquired_raw = properties.get("datetime")
     if not acquired_raw or not isinstance(acquired_raw, str):
         warnings.append(f"Scene {scene_id}: no acquisition timestamp; skipped.")
         return None, warnings
     try:
-        acquired_at = datetime.fromisoformat(acquired_raw.replace("Z", "+00:00")).astimezone(UTC)
+        parsed_acquired_at = datetime.fromisoformat(acquired_raw.replace("Z", "+00:00"))
     except ValueError:
         warnings.append(f"Scene {scene_id}: unparseable timestamp; skipped.")
         return None, warnings
+    if parsed_acquired_at.tzinfo is None or parsed_acquired_at.utcoffset() is None:
+        warnings.append(f"Scene {scene_id}: timezone-naive acquisition timestamp; skipped.")
+        return None, warnings
+    acquired_at = parsed_acquired_at.astimezone(UTC)
 
     cloud_cover = properties.get("eo:cloud_cover")
-    if cloud_cover is not None and not isinstance(cloud_cover, (int, float)):
-        warnings.append(f"Scene {scene_id}: non-numeric cloud cover ignored.")
-        cloud_cover = None
+    if cloud_cover is not None:
+        try:
+            valid_cloud_cover = (
+                not isinstance(cloud_cover, bool)
+                and isinstance(cloud_cover, (int, float))
+                and math.isfinite(float(cloud_cover))
+                and 0.0 <= float(cloud_cover) <= 100.0
+            )
+        except (OverflowError, ValueError):
+            valid_cloud_cover = False
+        if not valid_cloud_cover:
+            warnings.append(f"Scene {scene_id}: invalid cloud cover ignored.")
+            cloud_cover = None
 
     surface_assets = SURFACE_ASSETS_BY_COLLECTION[short_code]
-    assets = item.get("assets") or {}
+    assets = item.get("assets")
+    if not isinstance(assets, dict):
+        warnings.append(f"Scene {scene_id}: malformed STAC assets; skipped.")
+        return None, warnings
     asset_refs: dict[str, str] = {}
     band_mapping: dict[str, str] = {}
     for surface, asset_key in surface_assets.items():
@@ -251,8 +272,36 @@ def search_scenes(
 
     base_url = settings.nasa_hls_stac_base_url.rstrip("/")
     url = f"{base_url}{STAC_SEARCH_PATH}"
-    page_size = min(max(1, int(page_size or settings.nasa_hls_search_page_size)), PAGE_SIZE_CAP)
-    max_pages = min(max(1, int(max_pages or settings.nasa_hls_max_pages)), MAX_PAGES_CAP)
+    def bounded_positive_int(value: int | None, default: int, cap: int, field: str) -> int:
+        candidate = default if value is None else value
+        if isinstance(candidate, bool) or not isinstance(candidate, int) or candidate < 1:
+            raise ProviderRequestError(
+                f"NASA HLS {field} must be a positive integer.",
+                details=[{"field": field, "reason": "positive integer required"}],
+            )
+        return min(candidate, cap)
+
+    page_size = bounded_positive_int(
+        page_size, settings.nasa_hls_search_page_size, PAGE_SIZE_CAP, "page_size"
+    )
+    max_pages = bounded_positive_int(
+        max_pages, settings.nasa_hls_max_pages, MAX_PAGES_CAP, "max_pages"
+    )
+    if max_cloud_cover is not None:
+        try:
+            valid_cloud_threshold = (
+                not isinstance(max_cloud_cover, bool)
+                and isinstance(max_cloud_cover, (int, float))
+                and math.isfinite(float(max_cloud_cover))
+                and 0.0 <= float(max_cloud_cover) <= 100.0
+            )
+        except (OverflowError, ValueError):
+            valid_cloud_threshold = False
+        if not valid_cloud_threshold:
+            raise ProviderRequestError(
+                "NASA HLS max_cloud_cover must be a finite number from 0 to 100.",
+                details=[{"field": "max_cloud_cover", "reason": "out of range or invalid type"}],
+            )
     payload: dict[str, Any] = {
         "bbox": bbox,
         "datetime": (
@@ -265,7 +314,7 @@ def search_scenes(
         payload["collections"] = list(collections)
     if max_cloud_cover is not None:
         payload["query"] = {
-            "eo:cloud_cover": {"lte": max(0.0, min(100.0, float(max_cloud_cover)))}
+            "eo:cloud_cover": {"lte": float(max_cloud_cover)}
         }
 
     http = client or httpx

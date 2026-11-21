@@ -308,7 +308,7 @@ def create_acquisitions(
         scene_records: dict[str, dict[str, Any]] = {}
         for r in group:
             asset_refs = dict(r.asset_refs or {})
-            assets = {k: v for k, v in asset_refs.items() if k != "fmask"}
+            assets = asset_refs
             scene_records[r.scene_id] = {
                 "scene_id": r.scene_id,
                 "collection": r.product_code,

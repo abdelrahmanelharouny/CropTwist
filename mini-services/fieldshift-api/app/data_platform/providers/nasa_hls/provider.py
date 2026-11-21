@@ -5,16 +5,19 @@ NASA HLS v2.0 (Harmonized Landsat Sentinel-2, LP DAAC):
 
 - Catalog: NASA CMR STAC (`cmr.earthdata.nasa.gov/stac/LPCLOUD`) — public,
   unauthenticated metadata search (see catalog.py).
-- Assets: LP DAAC cloud-optimized GeoTIFFs. Reads use rasterio /vsicurl/
-  HTTP range reads (no full-raster downloads, no binaries persisted) with
+- Assets: LP DAAC cloud-optimized GeoTIFFs. Reads use rasterio/GDAL HTTP
+  range reads for the field-sized window only (no full-raster downloads,
+  no binaries persisted) with
   NASA Earthdata Login credentials from settings
   (`CROPTWIST_EARTHDATA_USERNAME` / `CROPTWIST_EARTHDATA_PASSWORD` or a
   pre-minted `CROPTWIST_EARTHDATA_BEARER_TOKEN`). Credentials are never
   hardcoded. Without credentials, protected asset reads fail loudly
   (ProviderUnavailable) — never fabricated.
 - Processing: per-pixel vegetation indices via the shared, documented index
-  math (`app.vegetation.raster_indices` / `app.vegetation.indices`), Fmask
-  cloud/shadow/cirrus/snow masking, zonal field statistics. HLS band scaling
+  math (`app.vegetation.raster_indices` / `app.vegetation.indices`), CRS-safe
+  field-window reads, HLS v2 Fmask cloud/adjacency/shadow/snow/high-AOT masking
+  (water and all AOT levels recorded separately), and zonal field statistics.
+  HLS band scaling
   (DN * 0.0001) and band naming follow the HLS v2.0 user guide.
 - Ingestion flow: `scene_ids` + `scene_records` (from a discovery step) pin
   the exact scenes to acquire — bounded, retryable, idempotent. Without
@@ -34,6 +37,7 @@ Honesty properties:
 from __future__ import annotations
 
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -54,6 +58,8 @@ from app.data_platform.providers.nasa_hls import catalog as hls_catalog
 from app.data_platform.providers.nasa_hls.registry_info import (
     ATTRIBUTION_TEXT,
     DOCUMENTATION_URL,
+    FMASK_AOT_HIGH,
+    FMASK_AOT_MASK,
     FMASK_EXCLUDE_MASK,
     HLS_REFLECTANCE_SCALE,
     HLS_SPATIAL_RESOLUTION_M,
@@ -102,10 +108,24 @@ class NasaHlsProvider:
             )
         scene_ids = options.get("scene_ids")
         if scene_ids is not None:
-            if not isinstance(scene_ids, list) or not all(isinstance(s, str) and s for s in scene_ids):
+            if (
+                not isinstance(scene_ids, list)
+                or not scene_ids
+                or any(
+                    not isinstance(scene_id, str)
+                    or not scene_id.strip()
+                    or len(scene_id) > 256
+                    for scene_id in scene_ids
+                )
+            ):
                 raise ProviderRequestError(
-                    "scene_ids must be a non-empty list of scene identifiers.",
-                    details=[{"field": "scene_ids", "reason": "invalid shape"}],
+                    "scene_ids must be a non-empty list of bounded scene identifiers.",
+                    details=[{"field": "scene_ids", "reason": "invalid shape or identifier"}],
+                )
+            if len(scene_ids) != len(set(scene_ids)):
+                raise ProviderRequestError(
+                    "scene_ids must not contain duplicate identifiers.",
+                    details=[{"field": "scene_ids", "reason": "duplicate scene id"}],
                 )
             if len(scene_ids) > settings.nasa_hls_max_scenes_per_job:
                 raise ProviderRequestError(
@@ -268,6 +288,29 @@ class NasaHlsProvider:
         """
         scene_ids = options.get("scene_ids")
         scene_records = options.get("scene_records")
+        # Explicit selectors must never be silently ignored. In particular,
+        # malformed or empty scene_ids previously fell through to "all
+        # records", which could acquire more imagery than the caller asked for.
+        if scene_ids is not None:
+            if (
+                not isinstance(scene_ids, list)
+                or not scene_ids
+                or any(
+                    not isinstance(scene_id, str)
+                    or not scene_id.strip()
+                    or len(scene_id) > 256
+                    for scene_id in scene_ids
+                )
+            ):
+                raise ProviderRequestError(
+                    "scene_ids must be a non-empty list of bounded scene identifiers.",
+                    details=[{"field": "scene_ids", "reason": "invalid shape or identifier"}],
+                )
+            if len(scene_ids) != len(set(scene_ids)):
+                raise ProviderRequestError(
+                    "scene_ids must not contain duplicate identifiers.",
+                    details=[{"field": "scene_ids", "reason": "duplicate scene id"}],
+                )
         if scene_records is not None:
             if not isinstance(scene_records, dict) or not scene_records:
                 raise ProviderRequestError(
@@ -275,21 +318,31 @@ class NasaHlsProvider:
                     "(obtained from satellite discovery).",
                     details=[{"field": "scene_records", "reason": "invalid shape"}],
                 )
-            if isinstance(scene_ids, list) and scene_ids:
-                missing = [s for s in scene_ids if s not in scene_records]
+            # Validate keys and metadata before sorting or indexing untrusted
+            # caller-supplied dictionaries.
+            for key, record in scene_records.items():
+                _validate_scene_record(key, record)
+                acquired_at = datetime.fromisoformat(
+                    record["acquired_at"].replace("Z", "+00:00")
+                ).astimezone(UTC)
+                if not start.astimezone(UTC) <= acquired_at <= end.astimezone(UTC):
+                    raise ProviderRequestError(
+                        f"Scene record '{key}' is outside the requested time range.",
+                        details=[{"field": "scene_records", "reason": "acquired_at outside requested range"}],
+                    )
+            if scene_ids is not None:
+                missing = [scene_id for scene_id in scene_ids if scene_id not in scene_records]
                 if missing:
                     raise ProviderRequestError(
                         "scene_ids reference scenes without discovery metadata.",
                         details=[{"field": "scene_ids", "reason": f"missing records: {missing[:5]}"}],
                     )
-                ordered = [s for s in scene_ids if s in scene_records]
+                ordered = scene_ids
             else:
                 ordered = sorted(scene_records.keys())
-            for key, record in scene_records.items():
-                _validate_scene_record(key, record)
             return {k: scene_records[k] for k in ordered}
 
-        if not isinstance(scene_ids, list) or not scene_ids:
+        if scene_ids is None:
             # Bounded auto-discovery mode.
             if geometry_geojson is None:
                 raise ProviderRequestError(
@@ -355,7 +408,7 @@ class NasaHlsProvider:
             token = data.get("token") or data.get("access_token")
             return token if isinstance(token, str) and token else None
         except Exception as exc:  # noqa: BLE001 — auth is best-effort
-            logger.warning("Earthdata token mint failed (%s); using basic-auth GDAL path", exc)
+            logger.warning("Earthdata token mint failed (%s); using basic-auth GDAL path", type(exc).__name__)
             return None
 
 
@@ -385,22 +438,102 @@ def _record_to_scene_record(record: hls_catalog.HlsSceneRecord) -> dict[str, Any
 
 
 def _validate_scene_record(scene_id: str, record: Any) -> None:
+    """Validate caller-supplied discovery records before GDAL can open assets."""
+    from urllib.parse import urlsplit
+
+    if not isinstance(scene_id, str) or not scene_id.strip() or len(scene_id) > 256:
+        raise ProviderRequestError(
+            "Scene record key must be a non-empty bounded identifier.",
+            details=[{"field": "scene_records", "reason": "invalid scene id"}],
+        )
     if not isinstance(record, dict):
         raise ProviderRequestError(
             f"Scene record '{scene_id}' must be an object.",
             details=[{"field": "scene_records", "reason": "invalid shape"}],
         )
+    if record.get("scene_id") != scene_id:
+        raise ProviderRequestError(
+            f"Scene record '{scene_id}' has a mismatched scene identifier.",
+            details=[{"field": "scene_records", "reason": "scene_id mismatch"}],
+        )
     if record.get("collection") not in (PRODUCT_CODE_L30, PRODUCT_CODE_S30):
         raise ProviderRequestError(
-            f"Scene record '{scene_id}' has an unknown collection "
-            f"'{record.get('collection')}'.",
+            f"Scene record '{scene_id}' has an unknown collection.",
             details=[{"field": "scene_records", "reason": "expected HLSL30 or HLSS30"}],
         )
-    if not record.get("acquired_at"):
+    acquired_at = record.get("acquired_at")
+    if not isinstance(acquired_at, str) or not acquired_at:
         raise ProviderRequestError(
             f"Scene record '{scene_id}' has no acquisition timestamp.",
             details=[{"field": "scene_records", "reason": "acquired_at required"}],
         )
+    try:
+        timestamp = datetime.fromisoformat(acquired_at.replace("Z", "+00:00"))
+    except ValueError:
+        raise ProviderRequestError(
+            f"Scene record '{scene_id}' has an invalid acquisition timestamp.",
+            details=[{"field": "scene_records", "reason": "invalid acquired_at"}],
+        ) from None
+    if timestamp.tzinfo is None:
+        raise ProviderRequestError(
+            f"Scene record '{scene_id}' acquisition timestamp must include a timezone.",
+            details=[{"field": "scene_records", "reason": "timezone required"}],
+        )
+
+    cloud_cover = record.get("cloud_cover_pct")
+    if cloud_cover is not None:
+        try:
+            valid_cloud_cover = (
+                not isinstance(cloud_cover, bool)
+                and isinstance(cloud_cover, (int, float))
+                and math.isfinite(float(cloud_cover))
+                and 0.0 <= float(cloud_cover) <= 100.0
+            )
+        except (OverflowError, ValueError):
+            valid_cloud_cover = False
+        if not valid_cloud_cover:
+            raise ProviderRequestError(
+                f"Scene record '{scene_id}' has invalid cloud-cover metadata.",
+                details=[{"field": "scene_records", "reason": "cloud_cover_pct must be between 0 and 100"}],
+            )
+
+    assets = record.get("assets")
+    if assets is None:
+        assets = {}
+    allowed_surfaces = {"red", "nir", "blue", "green", "swir1", "swir2", "fmask"}
+    if not isinstance(assets, dict) or any(key not in allowed_surfaces for key in assets):
+        raise ProviderRequestError(
+            f"Scene record '{scene_id}' has invalid asset metadata.",
+            details=[{"field": "scene_records", "reason": "unsupported asset key"}],
+        )
+    for surface, href in assets.items():
+        try:
+            parsed = urlsplit(href) if isinstance(href, str) else None
+            valid_url = bool(
+                parsed
+                and parsed.scheme.lower() == "https"
+                and parsed.hostname
+                and parsed.hostname.lower() in {
+                    "data.lpdaac.earthdatacloud.nasa.gov",
+                    "data.lpdaac.earthdata.nasa.gov",
+                }
+                and parsed.port in (None, 443)
+                and not parsed.username
+                and not parsed.password
+                and not parsed.query
+                and not parsed.fragment
+                and (
+                    parsed.path.startswith("/lp-prod-protected/")
+                    or parsed.path.startswith("/lp-prod-public/")
+                )
+            )
+        except ValueError:
+            valid_url = False
+        if not valid_url:
+            raise ProviderRequestError(
+                f"Scene record '{scene_id}' contains an untrusted {surface} asset URL.",
+                details=[{"field": "scene_records", "reason": "asset URL must be an unsigned HTTPS LP DAAC URL"}],
+            )
 
 
 def _gdal_env_options(auth: dict[str, str]) -> dict[str, str]:
@@ -432,40 +565,33 @@ def _load_scene_arrays(
     assets: dict[str, str],
     surfaces: list[str],
     gdal_env: dict[str, str],
+    geometry_geojson: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Read band COGs via /vsicurl/ HTTP range reads (production path).
+    """Read a bounded field window through the shared CRS-safe COG reader."""
+    from app.geospatial import preprocessing as pre
 
-    Returns ({surface: {"data": 2D float DN array, "transform": Affine}},
-    {"fmask": 2D uint8 array | None, "shape": (h, w)}). HTTP range reads keep
-    transfer proportional to the field window — no full-raster downloads and
-    no raster binaries are ever persisted to relational storage.
-    """
-    import rasterio
-
-    arrays: dict[str, Any] = {}
-    transform = None
-    for surface in surfaces:
-        href = assets.get(surface)
-        if not href:
-            continue
-        with rasterio.Env(**gdal_env):
-            with rasterio.open(f"/vsicurl/{href}") as src:
-                arrays[surface] = {"data": src.read(1).astype("float64"), "transform": src.transform}
-                if transform is None:
-                    transform = src.transform
-    fmask = None
-    fmask_href = assets.get("fmask")
-    if fmask_href:
-        with rasterio.Env(**gdal_env):
-            with rasterio.open(f"/vsicurl/{fmask_href}") as src:
-                fmask = src.read(1)
-    if not arrays:
-        raise ProviderUnavailable(
-            "No NASA HLS band assets could be read (missing credentials or "
-            "unreachable LP DAAC assets).",
-        )
-    shape = arrays[next(iter(arrays))]["data"].shape
-    return arrays, {"fmask": fmask, "shape": shape, "transform": transform}
+    reading = pre.read_scene_window(
+        assets=assets,
+        surfaces=tuple(surfaces),
+        geometry_geojson=geometry_geojson,
+        gdal_env=gdal_env,
+        max_window_mb=settings.raster_max_field_window_mb,
+        nodata_fallbacks={**{surface: -9999 for surface in surfaces}, "fmask": 255},
+    )
+    arrays = {
+        surface: {"data": data, "transform": reading.transform}
+        for surface, data in reading.arrays.items()
+    }
+    context = {
+        "fmask": reading.fmask,
+        "shape": (reading.height, reading.width),
+        "transform": reading.transform,
+        "crs": reading.crs,
+        "band_alignment": reading.band_alignment,
+        "window_bounds": reading.window_bounds,
+        "read_bytes_estimate": reading.read_bytes_estimate,
+    }
+    return arrays, context
 
 
 def _scene_observations(
@@ -481,8 +607,8 @@ def _scene_observations(
     first, statistics second) with HLS-specific band naming and Fmask QA.
     """
     import numpy as np
-    from rasterio.features import geometry_mask
 
+    from app.geospatial import preprocessing as pre
     from app.vegetation.raster_indices import compute_index_arrays
     from app.vegetation.zonal import ZonalResult, subfield_statistics_ok
 
@@ -490,7 +616,7 @@ def _scene_observations(
     scene_id = record["scene_id"]
     collection = record["collection"]
     assets = dict(record.get("assets") or {})
-    missing = [s for s in ("red", "nir") if s not in assets]
+    missing = [s for s in ("red", "nir", "fmask") if not assets.get(s)]
     if missing:
         warnings.append(
             f"Scene {scene_id}: required band assets missing ({', '.join(missing)}); scene skipped."
@@ -518,32 +644,65 @@ def _scene_observations(
     }
 
     try:
-        surfaces = [s for s in ("blue", "green", "red", "nir", "swir1", "swir2") if s in assets]
-        band_arrays, context = _load_scene_arrays(assets, surfaces, gdal_env)
+        surfaces = [s for s in ("red", "nir", "blue", "green", "swir1", "swir2") if s in assets]
+        band_arrays, context = _load_scene_arrays(assets, surfaces, gdal_env, geometry_geojson)
         fmask = context["fmask"]
         shape = context["shape"]
         transform = context["transform"]
-        field_mask = geometry_mask(
-            [geometry_geojson],
-            out_shape=shape,
+        if fmask is None or fmask.shape != shape:
+            raise ValueError("HLS Fmask QA asset is missing or not aligned to the field window")
+        field_mask = pre.field_mask_for_window(
+            geometry_geojson=geometry_geojson,
+            crs_string=context["crs"],
             transform=transform,
-            invert=True,
+            width=shape[1],
+            height=shape[0],
         )
+        metadata_common["raster_window"] = {
+            "crs": context["crs"],
+            "bounds": list(context["window_bounds"]),
+            "width_px": shape[1],
+            "height_px": shape[0],
+            "read_bytes_estimate": context["read_bytes_estimate"],
+            "read_mode": "windowed_range_read",
+            "band_alignment": context["band_alignment"],
+        }
+        field_fmask = fmask[field_mask].astype(np.uint8)
+        valid_qa = field_fmask != 255
+        aot_level = (field_fmask & FMASK_AOT_MASK) >> 6
+        metadata_common["fmask_qa"] = {
+            "cloud_pixels": int((((field_fmask & 0b00000010) != 0) & valid_qa).sum()),
+            "adjacent_to_cloud_pixels": int((((field_fmask & 0b00000100) != 0) & valid_qa).sum()),
+            "shadow_pixels": int((((field_fmask & 0b00001000) != 0) & valid_qa).sum()),
+            "snow_pixels": int((((field_fmask & 0b00010000) != 0) & valid_qa).sum()),
+            "water_pixels": int((((field_fmask & 0b00100000) != 0) & valid_qa).sum()),
+            "reserved_bit0_pixels": int((((field_fmask & 0b00000001) != 0) & valid_qa).sum()),
+            "high_aerosol_pixels": int(((aot_level == 3) & valid_qa).sum()),
+            "qa_nodata_pixels": int((~valid_qa).sum()),
+            "aot_level_counts": {
+                "climatology": int(((aot_level == 0) & valid_qa).sum()),
+                # HLS v2 guide expresses the pair in bit-7/bit-6 order:
+                # 10 = low (raw byte bits 7:6 -> shifted value 2),
+                # 01 = medium (shifted value 1).
+                "low": int(((aot_level == 2) & valid_qa).sum()),
+                "medium": int(((aot_level == 1) & valid_qa).sum()),
+                "high": int(((aot_level == 3) & valid_qa).sum()),
+            },
+        }
         # DN -> surface reflectance (HLS v2.0 documented scale factor).
         reflectances = {
             surface: arr["data"] * HLS_REFLECTANCE_SCALE for surface, arr in band_arrays.items()
         }
         index_arrays = compute_index_arrays(reflectances=reflectances, indices=variables)
-        cloud_mask = (
-            (fmask.astype(np.uint8) & FMASK_EXCLUDE_MASK) != 0
-            if fmask is not None
-            else None
-        )
-    except Exception as exc:  # noqa: BLE001 — network/raster failures degrade per scene
+        fmask_uint8 = fmask.astype(np.uint8)
+        high_aerosol_mask = (fmask_uint8 & FMASK_AOT_MASK) == FMASK_AOT_HIGH
+        cloud_mask = ((fmask_uint8 & FMASK_EXCLUDE_MASK) != 0) | high_aerosol_mask
+    except Exception as exc:  # noqa: BLE001 — raster errors can contain signed asset URLs
+        reason = type(exc).__name__
         raise ProviderUnavailable(
-            f"Scene {scene_id} could not be read ({type(exc).__name__}: {exc}); "
-            "NASA HLS assets require network access and Earthdata credentials.",
-            details=[{"scene_id": scene_id}],
+            f"Scene {scene_id} could not be read or validated ({reason}); "
+            "verify Earthdata credentials, COG availability, CRS metadata and QA assets.",
+            details=[{"scene_id": scene_id, "reason": reason}],
         ) from exc
 
     observations: list[CanonicalObservation] = []
@@ -554,12 +713,7 @@ def _scene_observations(
             stats.flags.append("no_valid_pixels")
         else:
             inside = field_mask & np.isfinite(index_array)
-            if cloud_mask is not None:
-                if cloud_mask.shape != shape:
-                    cloud_mask = np.kron(cloud_mask, np.ones((2, 2), dtype=bool))[
-                        : shape[0], : shape[1]
-                    ]
-                inside = inside & ~cloud_mask
+            inside = inside & ~cloud_mask
             values = index_array[inside].astype("float64")
             masked_pixels = int(field_mask.sum())
             stats.masked_pixels = masked_pixels
@@ -601,8 +755,8 @@ def _scene_observations(
                     "severity": "info",
                     "message": (
                         f"Per-pixel {vcode.upper()} over field mask "
-                        f"({stats.valid_pixels} valid pixels, HLS Fmask "
-                        "cloud/shadow/cirrus/snow-masked)."
+                        f"({stats.valid_pixels} valid pixels, HLS v2 Fmask "
+                        "cloud/adjacency/shadow/snow/high-AOT masked; water retained)."
                     ),
                 }
             ]

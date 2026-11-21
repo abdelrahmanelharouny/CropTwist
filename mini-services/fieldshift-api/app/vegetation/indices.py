@@ -17,8 +17,9 @@ Honesty rules enforced here:
 - Division-by-zero / ~zero denominators yield None (missing), never a
   fabricated value.
 - Inputs must be SURFACE REFLECTANCE in [0, 1] (scaled). Raw DN scaling is
-  the provider's job (Sentinel-2 L2A: DN * 0.0001; Landsat C2 L2:
-  DN * 2.75e-05 - 0.2) and is recorded in observation provenance there.
+  the provider's job (Sentinel-2 L2A: (DN + BOA_ADD_OFFSET) / 10000, with
+  baseline-aware offsets; Landsat C2 L2: DN * 2.75e-05 - 0.2) and is recorded
+  in observation provenance there.
 - Values outside the physical range of an index are returned as None with a
   reason flag — never clamped silently. EVI's documented practical range
   extends above 1 (dense canopies); pure ratio indices are bounded [-1, 1].
@@ -31,7 +32,9 @@ from dataclasses import dataclass, field
 
 VEGETATION_INDEX_VERSION = "veg-indices-1.0.0"
 
-# Sentinel-2 L2A DN -> surface reflectance [0,1]
+# Sentinel-2 L2A DN -> surface reflectance scale. The additive offset is
+# processing-baseline dependent (PB >= 04.00: -0.1 reflectance); the STAC
+# provider resolves it from asset metadata / processing baseline per scene.
 SENTINEL2_REFLECTANCE_SCALE = 0.0001
 # Landsat Collection 2 Level-2 DN -> surface reflectance
 LANDSAT_C2_L2_SCALE = 2.75e-05

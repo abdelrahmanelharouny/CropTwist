@@ -48,9 +48,14 @@ DOCUMENTATION_URL = "https://lpdaac.usgs.gov/products/hlsl30v2.0/"
 
 KNOWN_LIMITATIONS = (
     "30 m harmonized surface reflectance: sub-field variability claims below "
-    "the zonal pixel threshold are refused, never asserted. Cloud, shadow, "
-    "cirrus and snow/ice pixels are masked via the HLS Fmask layer; masking "
-    "is imperfect and heavily clouded periods can leave long data gaps. "
+    "the zonal pixel threshold are refused, never asserted. Cloud, adjacent-"
+    "to-cloud/shadow, cloud-shadow and snow/ice pixels are masked via HLS "
+    "Fmask; water is retained and separately counted because it can be "
+    "agronomically relevant (e.g. flooded fields). Bit 0 is reserved in HLS "
+    "v2.0, not a cirrus class. High-AOT pixels are excluded because known "
+    "HLS v2 artifacts can produce unrealistically low reflectance near bright "
+    "targets; all AOT levels are recorded in provenance. Masking is imperfect "
+    "and heavily clouded periods can leave long data gaps. "
     "HLS is an atmospheric-corrected ESTIMATE, not a ground measurement. "
     "HLS is a vegetation/land product: it does NOT provide parcel-level soil "
     "moisture (coarse-resolution SMAP data, when integrated later, must never "
@@ -58,15 +63,20 @@ KNOWN_LIMITATIONS = (
 )
 
 # Fmask (HLS v2 QA) bit assignments, from the HLS v2.0 user guide.
-FMASK_BIT_CIRRUS = 0
+# Bit 0 is reserved (the legacy cirrus label is not used in HLS v2.0).
+FMASK_BIT_RESERVED_0 = 0
 FMASK_BIT_CLOUD = 1
 FMASK_BIT_ADJACENT_TO_CLOUD = 2
 FMASK_BIT_CLOUD_SHADOW = 3
 FMASK_BIT_SNOW_ICE = 4
 FMASK_BIT_WATER = 5
-# Bits excluded from vegetation statistics: cirrus, cloud, shadow, snow/ice.
-# (Adjacent-to-cloud and water bits are recorded but not excluded.)
-FMASK_EXCLUDE_MASK = 0b011011  # bits 0,1,3,4
+FMASK_AOT_SHIFT = 6
+FMASK_AOT_MASK = 0b11000000
+# Exclude cloud, adjacent-to-cloud/shadow, cloud shadow and snow/ice.
+# Water is retained and recorded. High AOT (bits 6-7 == 11) is separately
+# excluded because HLS v2 known issues link it to unrealistically low reflectance.
+FMASK_AOT_HIGH = 0b11000000
+FMASK_EXCLUDE_MASK = 0b00011110  # bits 1,2,3,4
 
 # Surface -> asset key per collection (HLS v2.0 asset naming).
 HLS_L30_SURFACE_ASSETS = {

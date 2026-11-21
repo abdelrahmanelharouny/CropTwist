@@ -1,0 +1,469 @@
+"""Contract tests for Sentinel-2 field-window alignment and radiometry."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+import httpx
+import numpy as np
+import rasterio
+import pytest
+from rasterio.transform import from_origin
+
+from app.core.config import Settings
+
+from app.data_platform.providers.sentinel2.provider import (
+    Sentinel2StacProvider,
+    _gdal_env_options,
+    _observations_from_item,
+    _radiometry_for_scene,
+    _rasterio_asset_href,
+    _safe_asset_href_for_metadata,
+)
+from tests.fixtures.raster_fixtures import fixture_field_geojson
+
+
+def _write_sentinel2_item(tmp_path, *, baseline="05.11", stac_radiometry=True, include_scl=True):
+    crs = "EPSG:32636"
+    transform_10m = from_origin(500000, 3800000, 10, 10)
+    transform_20m = from_origin(500000, 3800000, 20, 20)
+    spectral = {
+        "B02_10m": (1000, 10, 110, transform_10m),
+        "B03_10m": (2000, 10, 110, transform_10m),
+        "B04_10m": (3000, 10, 110, transform_10m),
+        "B08_10m": (7000, 10, 110, transform_10m),
+        "B11_20m": (5000, 20, 55, transform_20m),
+    }
+    assets = {}
+    for key, (value, resolution, width, transform) in spectral.items():
+        height = 100 if resolution == 10 else 50
+        path = tmp_path / f"{key}.tif"
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            height=height,
+            width=width,
+            count=1,
+            dtype="uint16",
+            crs=crs,
+            transform=transform,
+            nodata=0,
+        ) as dst:
+            dst.write(np.full((height, width), value, dtype="uint16"), 1)
+        asset = {"href": str(path)}
+        if stac_radiometry:
+            asset["raster:bands"] = [{"scale": 0.0001, "offset": -0.1, "nodata": 0}]
+        assets[key] = asset
+
+    if include_scl:
+        scl_path = tmp_path / "SCL_20m.tif"
+        scl = np.full((50, 55), 4, dtype="uint8")
+        scl[20, 20] = 9  # high-probability cloud; nearest-neighbour to 10 m
+        scl[21, 21] = 7  # unclassified
+        scl[22, 22] = 11  # snow/ice
+        with rasterio.open(
+            scl_path,
+            "w",
+            driver="GTiff",
+            height=50,
+            width=55,
+            count=1,
+            dtype="uint8",
+            crs=crs,
+            transform=transform_20m,
+            nodata=0,
+        ) as dst:
+            dst.write(scl, 1)
+        assets["SCL_20m"] = {"href": str(scl_path)}
+
+    return {
+        "id": "S2A_TEST_FIELD_20240707",
+        "properties": {
+            "platform": "sentinel-2a",
+            "datetime": "2024-07-07T10:00:00Z",
+            "s2:processing_baseline": baseline,
+        },
+        "assets": assets,
+    }
+
+
+def _observations(item, variables=("ndvi", "ndmi")):
+    return _observations_from_item(
+        item=item,
+        scene_id=item["id"],
+        acquired_at=datetime(2024, 7, 7, 10, 0, tzinfo=UTC),
+        cloud_cover=12.5,
+        variables=list(variables),
+        geometry_geojson=fixture_field_geojson(),
+        options={},
+        gdal_env={},
+    )
+
+
+def test_mixed_resolution_sentinel2_scene_is_aligned_and_baseline_scaled(tmp_path):
+    item = _write_sentinel2_item(tmp_path, baseline="03.01")
+    observations, warnings = _observations(item)
+
+    assert warnings == []
+    by_index = {obs.variable_code: obs for obs in observations}
+    assert by_index["ndvi"].value == pytest.approx(0.5, abs=1e-6)
+    assert by_index["ndmi"].value == pytest.approx(0.2, abs=1e-6)
+    assert by_index["ndvi"].spatial_resolution_m == 10.0
+    assert by_index["ndmi"].spatial_resolution_m == 20.0
+
+    ndmi_meta = by_index["ndmi"].metadata
+    assert ndmi_meta["raster_window"]["reference_grid"] == "red_10m"
+    assert ndmi_meta["raster_window"]["band_alignment"]["swir1"] == "reprojected"
+    assert ndmi_meta["raster_window"]["band_alignment"]["fmask"] == "reprojected"
+    assert ndmi_meta["radiometry"]["red"]["offset"] == -0.1
+    assert ndmi_meta["radiometry"]["red"]["offset_source"] == "stac_raster_bands"
+    assert ndmi_meta["zonal"]["valid_pixels"] < ndmi_meta["zonal"]["masked_pixels"]
+
+
+def test_processing_baseline_supplies_offset_when_asset_tags_are_absent(tmp_path):
+    item = _write_sentinel2_item(tmp_path, stac_radiometry=False, baseline="05.11")
+    observations, warnings = _observations(item, variables=("ndvi",))
+
+    assert warnings == []
+    ndvi = observations[0]
+    assert ndvi.value == pytest.approx(0.5, abs=1e-6)
+    assert ndvi.metadata["radiometry"]["red"]["offset"] == -0.1
+    assert ndvi.metadata["radiometry"]["red"]["offset_source"] == "processing_baseline"
+
+
+def test_legacy_processing_baseline_uses_zero_offset(tmp_path):
+    item = _write_sentinel2_item(tmp_path, stac_radiometry=False, baseline="03.01")
+    observations, warnings = _observations(item, variables=("ndvi",))
+
+    assert warnings == []
+    ndvi = observations[0]
+    assert ndvi.value == pytest.approx(0.4, abs=1e-6)
+    assert ndvi.metadata["radiometry"]["red"]["offset"] == 0.0
+
+
+def test_missing_offset_and_baseline_fails_closed(tmp_path):
+    from app.core.errors import ProviderUnavailable
+
+    item = _write_sentinel2_item(tmp_path, stac_radiometry=False)
+    item["properties"].pop("s2:processing_baseline")
+    with pytest.raises(ProviderUnavailable, match="no Sentinel-2 processing baseline") as exc:
+        _observations(item, variables=("ndvi",))
+    assert exc.value.details == [
+        {"scene_id": item["id"], "reason": "missing_sentinel2_radiometric_offset"}
+    ]
+
+
+def test_scene_without_scl_is_skipped_instead_of_claiming_cloud_masking(tmp_path):
+    item = _write_sentinel2_item(tmp_path, include_scl=False)
+    observations, warnings = _observations(item, variables=("ndvi",))
+
+    assert observations == []
+    assert any("SCL quality asset missing" in warning for warning in warnings)
+
+
+def test_gdal_auth_header_is_scoped_to_cdse_asset_hosts():
+    headers = {"Authorization": "Bearer token"}
+    cdse_asset = "https://eodata.dataspace.copernicus.eu/path/band.tif"
+    external_asset = "https://planetarycomputer.microsoft.com/path/band.tif?sig=secret"
+
+    base_env = _gdal_env_options({})
+    assert base_env["GDAL_DISABLE_READDIR_ON_OPEN"] == "EMPTY_DIR"
+    assert _gdal_env_options(headers).get("GDAL_HTTP_HEADERS") is None
+
+    cdse_env = _gdal_env_options(headers, [cdse_asset])
+    assert cdse_env["GDAL_HTTP_HEADERS"] == "Authorization: Bearer token\r\n"
+
+    external_env = _gdal_env_options(headers, [external_asset])
+    assert "GDAL_HTTP_HEADERS" not in external_env
+    mixed_env = _gdal_env_options(headers, [cdse_asset, external_asset])
+    assert "GDAL_HTTP_HEADERS" not in mixed_env
+
+
+def test_alternate_stac_provider_never_receives_cdse_credentials(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "sentinel2_stac_base_url", "https://planetarycomputer.microsoft.com/api/stac/v1")
+    monkeypatch.setattr(settings, "cdse_username", "user")
+    monkeypatch.setattr(settings, "cdse_password", "password")
+
+    class ForbiddenClient:
+        def post(self, *args, **kwargs):
+            raise AssertionError("CDSE credentials must not be requested for an alternate STAC host")
+
+    provider = Sentinel2StacProvider(client=ForbiddenClient())
+    assert provider._auth_headers() == {}
+
+
+def test_signed_asset_query_is_removed_before_metadata_persistence():
+    href = "https://example.com/band.tif?sig=secret&token=private#fragment"
+    assert _safe_asset_href_for_metadata(href) == "https://example.com/band.tif"
+
+
+def test_processing_version_is_used_when_legacy_s2_baseline_is_absent(tmp_path):
+    item = _write_sentinel2_item(tmp_path, stac_radiometry=False)
+    item["properties"].pop("s2:processing_baseline")
+    item["properties"]["processing:version"] = "05.11"
+
+    observations, warnings = _observations(item, variables=("ndvi",))
+
+    assert warnings == []
+    assert observations[0].metadata["processing_baseline"] == "05.11"
+    assert observations[0].metadata["radiometry"]["red"]["offset"] == -0.1
+    assert observations[0].metadata["radiometry"]["red"]["offset_source"] == "processing_baseline"
+
+
+def test_cdse_s3_asset_uri_maps_to_gdal_vsis3_path():
+    href = "s3://eodata/Sentinel-2/MSI/L2A/2025/12/29/B04_10m.jp2"
+    assert _rasterio_asset_href(href) == "/vsis3/eodata/Sentinel-2/MSI/L2A/2025/12/29/B04_10m.jp2"
+
+
+def test_cdse_s3_gdal_environment_uses_separate_s3_credentials(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "cdse_s3_access_key", "test-access-key")
+    monkeypatch.setattr(settings, "cdse_s3_secret_key", "test-secret-key")
+    hrefs = [
+        "s3://eodata/Sentinel-2/MSI/L2A/2025/12/29/B04_10m.jp2",
+        "s3://eodata/Sentinel-2/MSI/L2A/2025/12/29/SCL_20m.jp2",
+    ]
+
+    env = _gdal_env_options({}, hrefs)
+
+    assert env["AWS_ACCESS_KEY_ID"] == "test-access-key"
+    assert env["AWS_SECRET_ACCESS_KEY"] == "test-secret-key"
+    assert env["AWS_S3_ENDPOINT"] == "eodata.dataspace.copernicus.eu"
+    assert env["AWS_DEFAULT_REGION"] == "default"
+    assert env["AWS_VIRTUAL_HOSTING"] == "FALSE"
+    assert env["AWS_HTTPS"] == "YES"
+    assert "GDAL_HTTP_HEADERS" not in env
+
+
+def test_cdse_s3_gdal_environment_fails_closed_without_s3_keys(monkeypatch):
+    from app.core.config import settings
+    from app.core.errors import ProviderUnavailable
+
+    monkeypatch.setattr(settings, "cdse_s3_access_key", "")
+    monkeypatch.setattr(settings, "cdse_s3_secret_key", "")
+    with pytest.raises(ProviderUnavailable, match="CDSE S3 credentials are required"):
+        _gdal_env_options({}, ["s3://eodata/Sentinel-2/MSI/L2A/2025/12/29/B04_10m.jp2"])
+
+
+def test_stac_search_follows_bounded_same_origin_pagination(monkeypatch):
+    import httpx
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "sentinel2_stac_base_url", "https://stac.example.test/api/stac/v1")
+
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, **kwargs):
+            self.calls.append(("POST", url, kwargs.get("json")))
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"id": "scene-1"}],
+                    "links": [{"rel": "next", "href": "/api/stac/v1/search?page=2", "method": "GET"}],
+                },
+                request=httpx.Request("POST", url),
+            )
+
+        def get(self, url, **kwargs):
+            self.calls.append(("GET", url, None))
+            return httpx.Response(
+                200,
+                json={"features": [{"id": "scene-2"}], "links": []},
+                request=httpx.Request("GET", url),
+            )
+
+    client = Client()
+    provider = Sentinel2StacProvider(client=client)
+    items = provider.search_items(
+        geometry_geojson=fixture_field_geojson(),
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+    )
+
+    assert [item["id"] for item in items] == ["scene-1", "scene-2"]
+    assert [call[0] for call in client.calls] == ["POST", "GET"]
+
+
+def test_stac_search_rejects_cross_origin_pagination(monkeypatch):
+    import httpx
+
+    from app.core.config import settings
+    from app.core.errors import ProviderRequestError
+
+    monkeypatch.setattr(settings, "sentinel2_stac_base_url", "https://stac.example.test/api/stac/v1")
+
+    class Client:
+        def post(self, url, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"id": "scene-1"}],
+                    "links": [{"rel": "next", "href": "https://attacker.example/steal"}],
+                },
+                request=httpx.Request("POST", url),
+            )
+
+        def get(self, *args, **kwargs):
+            raise AssertionError("cross-origin pagination must never be requested")
+
+    provider = Sentinel2StacProvider(client=Client())
+    with pytest.raises(ProviderRequestError, match="untrusted URL"):
+        provider.search_items(
+            geometry_geojson=fixture_field_geojson(),
+            start=datetime(2024, 7, 1, tzinfo=UTC),
+            end=datetime(2024, 7, 31, tzinfo=UTC),
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_cloud_cover",
+    [True, "80", float("nan"), float("inf"), 10**1000],
+)
+def test_fetch_observations_rejects_non_numeric_or_non_finite_cloud_cover(invalid_cloud_cover):
+    from app.core.errors import ProviderRequestError
+    from app.data_platform.contracts.observations import AreaOfInterest
+
+    provider = Sentinel2StacProvider(client=object())
+    with pytest.raises(ProviderRequestError):
+        provider.fetch_observations(
+            area_of_interest=AreaOfInterest(
+                field_id="field-1",
+                geometry_geojson=fixture_field_geojson(),
+            ),
+            variables=["ndvi"],
+            start=datetime(2024, 7, 1, tzinfo=UTC),
+            end=datetime(2024, 7, 31, tzinfo=UTC),
+            options={"max_cloud_cover": invalid_cloud_cover},
+        )
+
+
+def test_stac_search_rejects_invalid_cloud_cover_and_page_size():
+    from app.core.errors import ProviderRequestError
+
+    provider = Sentinel2StacProvider(client=object())
+    args = {
+        "geometry_geojson": fixture_field_geojson(),
+        "start": datetime(2024, 7, 1, tzinfo=UTC),
+        "end": datetime(2024, 7, 31, tzinfo=UTC),
+    }
+    with pytest.raises(ProviderRequestError, match="between 0 and 100"):
+        provider.search_items(**args, max_cloud_cover=101)
+    with pytest.raises(ProviderRequestError, match="must be numeric"):
+        provider.search_items(**args, max_cloud_cover=True)
+    with pytest.raises(ProviderRequestError, match="positive integer"):
+        provider.search_items(**args, limit=0)
+
+
+def test_stac_pagination_preserves_a_configured_nonstandard_https_port(monkeypatch):
+    import httpx
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "sentinel2_stac_base_url", "https://stac.example.test:8443/api/stac/v1")
+
+    class Client:
+        def post(self, url, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"id": "scene-1"}],
+                    "links": [{
+                        "rel": "next",
+                        "href": "https://stac.example.test:8443/api/stac/v1/search?page=2",
+                        "method": "GET",
+                    }],
+                },
+                request=httpx.Request("POST", url),
+            )
+
+        def get(self, url, **kwargs):
+            assert url == "https://stac.example.test:8443/api/stac/v1/search?page=2"
+            return httpx.Response(
+                200,
+                json={"features": [{"id": "scene-2"}], "links": []},
+                request=httpx.Request("GET", url),
+            )
+
+    provider = Sentinel2StacProvider(client=Client())
+    items = provider.search_items(
+        geometry_geojson=fixture_field_geojson(),
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+    )
+    assert [item["id"] for item in items] == ["scene-1", "scene-2"]
+
+def test_radiometry_rejects_non_finite_or_boolean_stac_scale():
+    from types import SimpleNamespace
+
+    reading = SimpleNamespace(scale_values={"red": 1.0}, offset_values={"red": 0.0})
+    for bad_scale in (float("nan"), float("inf"), True, 0.0, -0.1):
+        item = {
+            "properties": {"processing:version": "05.11"},
+            "assets": {"B04_10m": {"raster:bands": [{"scale": bad_scale, "offset": -0.1}]}},
+        }
+        with pytest.raises(ValueError, match="STAC scale"):
+            _radiometry_for_scene(item, reading, {"red": "red.tif"})
+
+
+def test_radiometry_rejects_conflicting_stac_and_geotiff_scales():
+    from types import SimpleNamespace
+
+    reading = SimpleNamespace(scale_values={"red": 0.0001}, offset_values={"red": 0.0})
+    item = {
+        "properties": {"processing:version": "05.11"},
+        "assets": {"B04_10m": {"raster:bands": [{"scale": 0.0002, "offset": -0.1}]}},
+    }
+    with pytest.raises(ValueError, match="scale metadata conflict"):
+        _radiometry_for_scene(item, reading, {"red": "red.tif"})
+
+
+def test_radiometry_rejects_conflicting_stac_and_geotiff_offsets():
+    from types import SimpleNamespace
+
+    reading = SimpleNamespace(scale_values={"red": 1.0}, offset_values={"red": -0.1})
+    item = {
+        "properties": {"processing:version": "05.11"},
+        "assets": {"B04_10m": {"raster:bands": [{"scale": 0.0001, "offset": 0.0}]}},
+    }
+    with pytest.raises(ValueError, match="offset metadata conflict"):
+        _radiometry_for_scene(item, reading, {"red": "red.tif"})
+
+def test_stac_transport_error_does_not_leak_signed_query_parameters():
+    from app.core.errors import ProviderUnavailable
+
+    secret_url = "https://stac.example.test/search?access_token=secret-value"
+
+    class BrokenClient:
+        def post(self, url, **kwargs):
+            request = httpx.Request("POST", secret_url)
+            raise httpx.ConnectError(f"connect failed for {secret_url}", request=request)
+
+    provider = Sentinel2StacProvider(client=BrokenClient())
+    with pytest.raises(ProviderUnavailable) as exc:
+        provider.search_items(
+            geometry_geojson=fixture_field_geojson(),
+            start=datetime(2024, 7, 1, tzinfo=UTC),
+            end=datetime(2024, 7, 31, tzinfo=UTC),
+        )
+    assert "secret-value" not in str(exc.value)
+    assert "access_token" not in str(exc.value)
+    assert exc.value.details == [{"reason": "ConnectError"}]
+
+def test_radiometry_rejects_non_finite_or_boolean_stac_offset():
+    from types import SimpleNamespace
+
+    reading = SimpleNamespace(scale_values={"red": 1.0}, offset_values={"red": 0.0})
+    for bad_offset in (float("nan"), float("inf"), True, "0.0"):
+        item = {
+            "properties": {"processing:version": "05.11"},
+            "assets": {"B04_10m": {"raster:bands": [{"scale": 0.0001, "offset": bad_offset}]}},
+        }
+        with pytest.raises(ValueError, match="STAC offset"):
+            _radiometry_for_scene(item, reading, {"red": "red.tif"})

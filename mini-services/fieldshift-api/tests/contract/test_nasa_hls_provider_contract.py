@@ -250,14 +250,23 @@ def _fake_raster_seam(monkeypatch, red, nir, blue=None, fmask=None, size=(12, 12
 
     transform = from_bounds(31.40, 31.10, 31.42, 31.12, size[1], size[0])
 
-    def fake_load(assets, surfaces, gdal_env):
+    def fake_load(assets, surfaces, gdal_env, geometry_geojson):
         arrays = {}
         for surface in surfaces:
             data = {"red": red, "nir": nir, "blue": blue if blue is not None else red}.get(surface)
             if data is None:
                 continue
             arrays[surface] = {"data": data.astype("float64"), "transform": transform}
-        return arrays, {"fmask": fmask, "shape": size, "transform": transform}
+        qa = fmask if fmask is not None else np.zeros(size, dtype="uint8")
+        return arrays, {
+            "fmask": qa,
+            "shape": size,
+            "transform": transform,
+            "crs": "EPSG:4326",
+            "band_alignment": {surface: "native" for surface in surfaces} | {"fmask": "native"},
+            "window_bounds": (31.40, 31.10, 31.42, 31.12),
+            "read_bytes_estimate": size[0] * size[1] * (len(surfaces) + 2) * 8,
+        }
 
     monkeypatch.setattr(hls_provider_module, "_load_scene_arrays", fake_load)
     return transform
@@ -338,7 +347,7 @@ def test_fmask_masks_cloud_pixels(monkeypatch):
             "scene_id": scene_id,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
         }
     }
     result = provider.fetch_observations(
@@ -369,7 +378,7 @@ def test_all_cloud_scene_yields_missing_not_zero(monkeypatch):
             "scene_id": scene_id,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
         }
     }
     result = provider.fetch_observations(
@@ -403,13 +412,13 @@ def test_per_scene_degradation_degrades_only_that_scene(monkeypatch):
             "scene_id": good,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
         },
         bad: {
             "scene_id": bad,
             "collection": "HLSL30",
             "acquired_at": "2024-07-09T16:45:38+00:00",
-            "assets": {"blue": "b.tif"},  # red+nir missing -> scene skipped
+            "assets": {"blue": f"{LP}/test.blue.tif"},  # red+nir missing -> scene skipped
         },
     }
     result = provider.fetch_observations(
@@ -424,6 +433,104 @@ def test_per_scene_degradation_degrades_only_that_scene(monkeypatch):
     assert {o.metadata["scene_id"] for o in result.observations} == {good}
 
 
+def test_fmask_masks_high_aerosol_pixels(monkeypatch):
+    import numpy as np
+
+    dn_red = np.full((12, 12), 0.12 * 10000)
+    dn_nir = np.full((12, 12), 0.42 * 10000)
+    fmask = np.zeros((12, 12), dtype="uint8")
+    fmask[5, 5] = 0b11000000
+    _fake_raster_seam(monkeypatch, dn_red, dn_nir, fmask=fmask)
+
+    provider = NasaHlsProvider(client=make_client([_search_body([])]))
+    aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
+    scene_id = "HLS.L30.T16SDC.2024189T164537.v2.0"
+    records = {
+        scene_id: {
+            "scene_id": scene_id,
+            "collection": "HLSL30",
+            "acquired_at": "2024-07-07T16:45:37+00:00",
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
+        }
+    }
+    result = provider.fetch_observations(
+        area_of_interest=aoi,
+        variables=["ndvi"],
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+        options={"scene_ids": [scene_id], "scene_records": records},
+    )
+    observation = result.observations[0]
+    assert observation.metadata["zonal"]["valid_pixels"] == 143
+    assert observation.metadata["fmask_qa"]["high_aerosol_pixels"] == 1
+    assert observation.metadata["fmask_qa"]["aot_level_counts"]["high"] == 1
+
+
+
+def test_fmask_aerosol_low_and_medium_bit_patterns_are_not_swapped(monkeypatch):
+    import numpy as np
+
+    dn_red = np.full((12, 12), 0.12 * 10000)
+    dn_nir = np.full((12, 12), 0.42 * 10000)
+    fmask = np.zeros((12, 12), dtype="uint8")
+    # HLS v2 bits 6-7: 10 = low, 01 = medium.
+    fmask[5, 5] = 0b01000000
+    fmask[6, 6] = 0b10000000
+    _fake_raster_seam(monkeypatch, dn_red, dn_nir, fmask=fmask)
+
+    provider = NasaHlsProvider(client=make_client([_search_body([])]))
+    aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
+    scene_id = "HLS.L30.T16SDC.2024189T164537.v2.0"
+    records = {
+        scene_id: {
+            "scene_id": scene_id,
+            "collection": "HLSL30",
+            "acquired_at": "2024-07-07T16:45:37+00:00",
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
+        }
+    }
+    result = provider.fetch_observations(
+        area_of_interest=aoi,
+        variables=["ndvi"],
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+        options={"scene_ids": [scene_id], "scene_records": records},
+    )
+    counts = result.observations[0].metadata["fmask_qa"]["aot_level_counts"]
+    assert counts["low"] == 1
+    assert counts["medium"] == 1
+    assert counts["high"] == 0
+
+def test_scene_without_fmask_is_skipped_instead_of_claiming_qa_masking(monkeypatch):
+    import numpy as np
+
+    dn_red = np.full((12, 12), 0.12 * 10000)
+    dn_nir = np.full((12, 12), 0.42 * 10000)
+    _fake_raster_seam(monkeypatch, dn_red, dn_nir)
+
+    provider = NasaHlsProvider(client=make_client([_search_body([])]))
+    aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
+    scene_id = "HLS.L30.T16SDC.2024189T164537.v2.0"
+    records = {
+        scene_id: {
+            "scene_id": scene_id,
+            "collection": "HLSL30",
+            "acquired_at": "2024-07-07T16:45:37+00:00",
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif"},
+        }
+    }
+    result = provider.fetch_observations(
+        area_of_interest=aoi,
+        variables=["ndvi"],
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+        options={"scene_ids": [scene_id], "scene_records": records},
+    )
+    assert result.observations == []
+    assert result.coverage["scenes_processed"] == 0
+    assert any("required band assets missing (fmask)" in warning for warning in result.warnings)
+
+
 def test_scene_records_without_acquired_at_rejected():
     provider = NasaHlsProvider(client=make_client([_search_body([])]))
     aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
@@ -434,7 +541,29 @@ def test_scene_records_without_acquired_at_rejected():
             variables=["ndvi"],
             start=datetime(2024, 7, 1, tzinfo=UTC),
             end=datetime(2024, 7, 31, tzinfo=UTC),
-            options={"scene_ids": [scene_id], "scene_records": {scene_id: {"collection": "HLSL30"}}},
+            options={"scene_ids": [scene_id], "scene_records": {scene_id: {"scene_id": scene_id, "collection": "HLSL30", "assets": {}}}},
+        )
+
+
+@pytest.mark.parametrize(
+    "scene_ids",
+    [
+        [],
+        "",
+        [""],
+        [True],
+        ["scene-a", "scene-a"],
+        ["x" * 257],
+    ],
+)
+def test_resolve_targets_rejects_malformed_explicit_scene_selectors(scene_ids):
+    provider = NasaHlsProvider()
+    with pytest.raises(ProviderRequestError, match="scene_ids"):
+        provider._resolve_targets(
+            {"scene_ids": scene_ids, "scene_records": {}},
+            start=datetime(2024, 7, 1, tzinfo=UTC),
+            end=datetime(2024, 7, 31, tzinfo=UTC),
+            geometry_geojson=FIELD_GEOMETRY,
         )
 
 
@@ -450,3 +579,157 @@ def test_validate_request_enforces_scene_cap():
     )  # no raise
     with pytest.raises(UnsupportedVariable):
         provider.validate_request(variables=["chlorophyll"], options={})
+
+@pytest.mark.parametrize(
+    "scene_ids",
+    [[], [""], [True], ["scene-1", "scene-1"], ["x" * 257]],
+)
+def test_validate_request_rejects_malformed_scene_selectors_before_job_creation(scene_ids):
+    provider = NasaHlsProvider()
+    with pytest.raises(ProviderRequestError, match="scene_ids"):
+        provider.validate_request(variables=["ndvi"], options={"scene_ids": scene_ids})
+
+
+def test_hls_raster_exception_does_not_leak_signed_asset_url(monkeypatch):
+    secret_url = "https://example.test/asset.tif?token=do-not-leak"
+
+    def fail_read(*args, **kwargs):
+        raise RuntimeError(f"failed to read {secret_url}")
+
+    monkeypatch.setattr(hls_provider_module, "_load_scene_arrays", fail_read)
+    provider = NasaHlsProvider(client=make_client([_search_body([])]))
+    aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
+    scene_id = "HLS.L30.T16SDC.2024189T164537.v2.0"
+    records = {
+        scene_id: {
+            "scene_id": scene_id,
+            "collection": "HLSL30",
+            "acquired_at": "2024-07-07T16:45:37+00:00",
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
+        }
+    }
+    result = provider.fetch_observations(
+        area_of_interest=aoi,
+        variables=["ndvi"],
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+        options={"scene_ids": [scene_id], "scene_records": records},
+    )
+    assert result.observations == []
+    assert any("RuntimeError" in warning for warning in result.warnings)
+    assert secret_url not in str(result.warnings)
+    assert "do-not-leak" not in str(result.warnings)
+
+def test_hls_scene_record_rejects_untrusted_asset_urls():
+    from app.core.errors import ProviderRequestError
+
+    base = {
+        "scene_id": "scene-1",
+        "collection": "HLSL30",
+        "acquired_at": "2024-07-07T16:45:37+00:00",
+        "assets": {},
+    }
+    invalid_hrefs = [
+        "http://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/a.tif",
+        "https://evil.example/lp-prod-protected/a.tif",
+        "https://user:password@data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/a.tif",
+        "https://data.lpdaac.earthdatacloud.nasa.gov:8443/lp-prod-protected/a.tif",
+        "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/a.tif?token=secret",
+        "https://data.lpdaac.earthdatacloud.nasa.gov/other-bucket/a.tif",
+    ]
+    for href in invalid_hrefs:
+        record = {**base, "assets": {"red": href}}
+        with pytest.raises(ProviderRequestError, match="untrusted red asset URL"):
+            hls_provider_module._validate_scene_record("scene-1", record)
+
+
+def test_hls_scene_record_rejects_mismatched_identity_and_invalid_cloud_cover():
+    from app.core.errors import ProviderRequestError
+
+    record = {
+        "scene_id": "different-scene",
+        "collection": "HLSL30",
+        "acquired_at": "2024-07-07T16:45:37+00:00",
+        "assets": {},
+    }
+    with pytest.raises(ProviderRequestError, match="mismatched scene identifier"):
+        hls_provider_module._validate_scene_record("scene-1", record)
+
+    record["scene_id"] = "scene-1"
+    record["cloud_cover_pct"] = float("nan")
+    with pytest.raises(ProviderRequestError, match="invalid cloud-cover"):
+        hls_provider_module._validate_scene_record("scene-1", record)
+
+def test_hls_explicit_scene_records_must_match_requested_date_range():
+    from app.core.errors import ProviderRequestError
+
+    provider = NasaHlsProvider()
+    scene_id = "HLS.L30.T16SDC.2023189T164537.v2.0"
+    record = {
+        "scene_id": scene_id,
+        "collection": "HLSL30",
+        "acquired_at": "2023-07-08T16:45:37+00:00",
+        "assets": {},
+    }
+    with pytest.raises(ProviderRequestError, match="outside the requested time range"):
+        provider._resolve_targets(
+            {"scene_ids": [scene_id], "scene_records": {scene_id: record}},
+            datetime(2024, 7, 1, tzinfo=UTC),
+            datetime(2024, 7, 31, tzinfo=UTC),
+            FIELD_GEOMETRY,
+        )
+
+
+def test_hls_explicit_scene_records_validate_keys_before_sorting():
+    from app.core.errors import ProviderRequestError
+
+    provider = NasaHlsProvider()
+    with pytest.raises(ProviderRequestError, match="bounded identifier"):
+        provider._resolve_targets(
+            {"scene_records": {1: {"scene_id": "scene-1"}}},
+            datetime(2024, 7, 1, tzinfo=UTC),
+            datetime(2024, 7, 31, tzinfo=UTC),
+            FIELD_GEOMETRY,
+        )
+
+
+def test_fmask_aerosol_level_counts_follow_hls_bit_order(monkeypatch):
+    import numpy as np
+
+    dn_red = np.full((12, 12), 0.12 * 10000)
+    dn_nir = np.full((12, 12), 0.42 * 10000)
+    fmask = np.zeros((12, 12), dtype="uint8")
+    # HLS QA documents bits 7:6 as 10=low and 01=medium.
+    fmask.flat[:48] = 0b10000000
+    fmask.flat[48:96] = 0b01000000
+    _fake_raster_seam(monkeypatch, dn_red, dn_nir, fmask=fmask)
+
+    provider = NasaHlsProvider(client=make_client([_search_body([])]))
+    aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
+    scene_id = "HLS.L30.T16SDC.2024189T164537.v2.0"
+    records = {
+        scene_id: {
+            "scene_id": scene_id,
+            "collection": "HLSL30",
+            "acquired_at": "2024-07-07T16:45:37+00:00",
+            "assets": {
+                "red": f"{LP}/test.red.tif",
+                "nir": f"{LP}/test.nir.tif",
+                "fmask": f"{LP}/test.Fmask.tif",
+            },
+        }
+    }
+    result = provider.fetch_observations(
+        area_of_interest=aoi,
+        variables=["ndvi"],
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+        options={"scene_ids": [scene_id], "scene_records": records},
+    )
+    qa = result.observations[0].metadata["fmask_qa"]
+    assert qa["aot_level_counts"] == {
+        "climatology": 48,
+        "low": 48,
+        "medium": 48,
+        "high": 0,
+    }
