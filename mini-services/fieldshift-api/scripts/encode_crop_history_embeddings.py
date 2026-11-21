@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from app.intelligence.crop_history.contracts import CropHistoryRecord
-from app.intelligence.crop_history.presto import PrestoModelBundle, encode_records, load_pretrained
+from app.intelligence.crop_history.presto import encode_records, load_pretrained
 from app.intelligence.crop_history.presto_inputs import PRESTO_INPUT_SCHEMA_VERSION
 from app.intelligence.crop_history.training import validate_training_rows
 
