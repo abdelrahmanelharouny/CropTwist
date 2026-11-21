@@ -45,7 +45,31 @@ async def probe_provider(name: str) -> dict[str, Any]:
         )
     except Exception as exc:
         category = getattr(exc, "category", "provider_probe_failed")
-        safe_category = category if isinstance(category, str) and category.replace("_", "").isalnum() else "provider_probe_failed"
+        # Never echo arbitrary exception attributes: third-party exceptions may
+        # accidentally place credentials or response fragments in category.
+        safe_categories = {
+            "provider_transient_http", "provider_capacity_limited",
+            "provider_credentials_or_permission", "provider_billing_required",
+            "provider_invalid_request_or_model", "provider_server_error",
+            "provider_http_error", "provider_concurrency_timeout",
+            "provider_stream_frame_too_large", "provider_response_too_large",
+            "provider_invalid_json_response", "provider_invalid_response_shape",
+            "provider_reported_error", "provider_timeout",
+            "provider_connection_error", "provider_transport_error",
+            "provider_unconfigured", "provider_circuit_open",
+            "provider_request_failed", "provider_output_too_large",
+            "provider_structured_output_invalid_json",
+            "provider_structured_output_schema_mismatch",
+            "provider_invalid_stream_frame", "provider_stream_error",
+            "provider_stream_incomplete", "provider_stream_interrupted",
+            "provider_stream_failed", "provider_safety_block",
+            "provider_output_truncated", "provider_incomplete_response",
+            "provider_invalid_message_contract", "provider_empty_messages",
+            "provider_empty_response", "provider_chain_unavailable",
+            "provider_data_policy_blocked", "provider_chain_timeout",
+            "provider_schema_unsupported_or_invalid",
+        }
+        safe_category = category if category in safe_categories else "provider_probe_failed"
         return {
             "provider": provider.name,
             "model": getattr(provider, "model", None),
