@@ -18,7 +18,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from app.core.errors import InvalidDateRange, ProviderUnavailable, UnsupportedVariable, ValidationFailed
+from app.core.errors import ProviderUnavailable, UnsupportedVariable, ValidationFailed
 from app.data_platform.contracts.observations import (
     AreaOfInterest,
     CanonicalObservation,
@@ -417,7 +417,8 @@ class WaPORV3Provider:
                 details=[{"field": "variables", "reason": ", ".join(unknown)}],
             )
 
-        start_utc, end_utc = start.astimezone(UTC), end.astimezone(UTC)
+        start_utc = start.replace(tzinfo=UTC) if start.tzinfo is None else start.astimezone(UTC)
+        end_utc = end.replace(tzinfo=UTC) if end.tzinfo is None else end.astimezone(UTC)
         observations: list[CanonicalObservation] = []
         warnings: list[str] = []
         rasters_seen = 0
