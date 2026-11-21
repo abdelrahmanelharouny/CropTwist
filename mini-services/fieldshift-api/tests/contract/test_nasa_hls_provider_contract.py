@@ -541,7 +541,7 @@ def test_scene_records_without_acquired_at_rejected():
             variables=["ndvi"],
             start=datetime(2024, 7, 1, tzinfo=UTC),
             end=datetime(2024, 7, 31, tzinfo=UTC),
-            options={"scene_ids": [scene_id], "scene_records": {scene_id: {"collection": "HLSL30"}}},
+            options={"scene_ids": [scene_id], "scene_records": {scene_id: {"scene_id": scene_id, "collection": "HLSL30", "assets": {}}}},
         )
 
 
