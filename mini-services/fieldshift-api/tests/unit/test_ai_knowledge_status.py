@@ -134,3 +134,79 @@ def test_unknown_requested_embedding_provider_is_reported_as_unavailable(monkeyp
 
     monkeypatch.setattr(ai_core, "embedding_provider_registry", Registry())
     assert ai_core._knowledge_provider("not-registered") is None
+
+def test_knowledge_search_fails_closed_without_uuid_organization_scope():
+    from app.intelligence.orchestration.knowledge import KnowledgeError, search_knowledge
+
+    class NoQueryDB:
+        def execute(self, statement):
+            raise AssertionError("database must not be queried without an organization UUID")
+
+    for organization_id in (None, "not-a-uuid"):
+        with pytest.raises(KnowledgeError, match="organization scope is required"):
+            search_knowledge(
+                NoQueryDB(),
+                organization_id=organization_id,
+                query_embedding=[1.0, 0.0],
+                embedding_provider="local",
+                embedding_model="model",
+            )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"top_k": True},
+        {"max_candidates": True},
+        {"min_similarity": True},
+        {"min_similarity": float("nan")},
+    ],
+)
+def test_knowledge_search_rejects_boolean_or_non_finite_limits(kwargs):
+    from uuid import uuid4
+    from app.intelligence.orchestration.knowledge import KnowledgeError, search_knowledge
+
+    class NoQueryDB:
+        def execute(self, statement):
+            raise AssertionError("invalid retrieval options must fail before database access")
+
+    params = {
+        "organization_id": uuid4(),
+        "query_embedding": [1.0, 0.0],
+        "embedding_provider": "local",
+        "embedding_model": "model",
+    }
+    params.update(kwargs)
+    with pytest.raises(KnowledgeError):
+        search_knowledge(NoQueryDB(), **params)
+
+
+def test_knowledge_search_defensively_skips_cross_tenant_rows():
+    from types import SimpleNamespace
+    from uuid import uuid4
+    from app.intelligence.orchestration.knowledge import search_knowledge
+
+    organization_id = uuid4()
+    other_organization_id = uuid4()
+
+    class FakeDB:
+        statement = None
+
+        def execute(self, statement):
+            self.statement = statement
+            chunk = SimpleNamespace(organization_id=other_organization_id)
+            document = SimpleNamespace(organization_id=other_organization_id)
+            return SimpleNamespace(all=lambda: [(chunk, document)])
+
+    db = FakeDB()
+    results = search_knowledge(
+        db,
+        organization_id=organization_id,
+        query_embedding=[1.0, 0.0],
+        embedding_provider="local",
+        embedding_model="model",
+    )
+    assert results == []
+    sql = str(db.statement)
+    assert "ai_knowledge_chunks.organization_id" in sql
+    assert "ai_knowledge_documents.organization_id" in sql
