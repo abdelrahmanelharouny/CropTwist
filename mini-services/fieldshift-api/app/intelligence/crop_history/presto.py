@@ -15,7 +15,7 @@ from typing import Any
 class PrestoModelBundle:
     encoder: Any
     pool_norm: Any
-    model_id: str = "torchgeo/presto"
+    model_id: str = "torchgeo/presto:PRESTO"
     weights_id: str = "Presto_Weights.PRESTO"
 
 
