@@ -9,13 +9,13 @@ import json
 import math
 
 from app.intelligence.config import ai_settings
-from app.intelligence.orchestration.embedding_adapters import FastEmbedE5Provider
+from app.intelligence.orchestration.embedding_adapters import FastEmbedMultilingualMiniLMProvider
 
 
 def main() -> int:
     if not ai_settings.ai_knowledge_embedding_enabled:
         raise SystemExit("Set CROPTWIST_AI_KNOWLEDGE_EMBEDDING_ENABLED=true before warmup.")
-    model = FastEmbedE5Provider._load_model(
+    model = FastEmbedMultilingualMiniLMProvider._load_model(
         ai_settings.ai_knowledge_embedding_model,
         ai_settings.ai_knowledge_embedding_cache_dir,
         2,
@@ -30,7 +30,7 @@ def main() -> int:
     if len(dimensions) != 1 or not all(math.isfinite(float(value)) for vector in vectors for value in vector):
         raise SystemExit("Local embedding warmup returned invalid vectors.")
     print(json.dumps({
-        "provider": "local-fastembed-e5",
+        "provider": "local-fastembed-multilingual-minilm",
         "model": ai_settings.ai_knowledge_embedding_model,
         "status": "warm",
         "dimensions": dimensions.pop(),
