@@ -73,3 +73,12 @@ def test_wapor_provider_is_registered_for_environmental_ingestion():
 
     provider = get_provider_registry().get("fao_wapor_v3")
     assert isinstance(provider, WaPORV3Provider)
+
+def test_l1_interception_unit_conflict_withholds_canonical_physical_unit():
+    # DE Africa's current specification lists mm/year for L1-I-D, while the
+    # FAO GEE collection describes average daily interception over a dekad.
+    # Keep the product discoverable but do not publish a guessed canonical unit.
+    product = get_product("L1-I-D")
+    assert product.temporal_support == "dekadal"
+    assert product.unit is None
+    assert product.scale_factor == 0.1
