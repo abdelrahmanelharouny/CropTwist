@@ -15,7 +15,7 @@ class WaPORProduct:
     code: str
     gee_collection: str
     level: Literal[1, 2, 3]
-    variable: Literal["aeti", "evaporation", "transpiration", "interception", "npp", "ret"]
+    variable: Literal["aeti", "evaporation", "transpiration", "interception", "npp", "ret", "soil_moisture"]
     temporal_support: Literal["daily", "dekadal"]
     resolution_m: int
     coverage: str
@@ -37,6 +37,7 @@ WAPOR_V3_PRODUCTS: tuple[WaPORProduct, ...] = (
     WaPORProduct("L2-I-D", "projects/UNFAO/wapor/v3/L2-I-D", 2, "interception", "dekadal", 100, "Africa and Near East", ("EGY",)),
     WaPORProduct("L2-T-D", "projects/UNFAO/wapor/v3/L2-T-D", 2, "transpiration", "dekadal", 100, "Africa and Near East", ("EGY",)),
     WaPORProduct("L2-NPP-D", "projects/UNFAO/wapor/v3/L2-NPP-D", 2, "npp", "dekadal", 100, "Africa and Near East", ("EGY",)),
+    WaPORProduct("L2-RSM-D", "projects/UNFAO/wapor/v3/L2-RSM-D", 2, "soil_moisture", "dekadal", 100, "Africa and Near East", ("EGY",)),
 )
 
 
