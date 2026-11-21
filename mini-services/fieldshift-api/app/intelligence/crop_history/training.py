@@ -32,13 +32,19 @@ def validate_training_rows(rows: list[dict[str, Any]]) -> None:
     regions: set[str] = set()
     classes: set[str] = set()
     for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"row {index} must be an object")
         missing = required - set(row)
         if missing:
             raise ValueError(f"row {index} is missing required metadata: {sorted(missing)}")
         for key in ("field_id", "farm_group_id", "region_id", "crop_code", "label_license"):
             if not isinstance(row[key], str) or not row[key].strip():
                 raise ValueError(f"row {index} has empty {key}")
-        if row["label_source"] not in ALLOWED_LABEL_SOURCES or row["label_source_verified"] is not True:
+        if (
+            not isinstance(row["label_source"], str)
+            or row["label_source"] not in ALLOWED_LABEL_SOURCES
+            or row["label_source_verified"] is not True
+        ):
             raise ValueError(f"row {index} has an unverified or unapproved label source")
         if row["label_license_verified"] is not True:
             raise ValueError(f"row {index} has an unverified label license")
@@ -86,7 +92,12 @@ def spatial_temporal_holdout(
     if not isinstance(held_out_region, str) or not held_out_region.strip():
         raise ValueError("held_out_region must be a non-empty region identifier")
     for index, row in enumerate(rows):
-        year = row.get("season_year") if isinstance(row, dict) else None
+        if not isinstance(row, dict):
+            raise ValueError(f"row {index} must be an object")
+        for key in ("region_id", "farm_group_id", "crop_code"):
+            if not isinstance(row.get(key), str) or not row[key].strip():
+                raise ValueError(f"row {index} {key} must be a non-empty string")
+        year = row.get("season_year")
         if isinstance(year, bool) or not isinstance(year, int) or not 2000 <= year <= 2100:
             raise ValueError(f"row {index} season_year must be an integer year in the supported range")
     train_indices = [
