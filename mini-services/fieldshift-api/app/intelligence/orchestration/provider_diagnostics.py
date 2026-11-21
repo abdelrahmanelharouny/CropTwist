@@ -26,6 +26,8 @@ async def probe_provider(name: str) -> dict[str, Any]:
         raise ValueError("provider name is invalid")
     try:
         provider = provider_registry.get(name.strip())
+        if provider is None:
+            return {"provider": name.strip(), "status": "unregistered"}
     except LookupError:
         return {"provider": name.strip(), "status": "unregistered"}
     if not provider.configured:
@@ -34,7 +36,7 @@ async def probe_provider(name: str) -> dict[str, Any]:
     try:
         result = await asyncio.wait_for(
             provider.generate(
-                _PROBE_MESSAGES,
+                [dict(message) for message in _PROBE_MESSAGES],
                 temperature=0,
                 max_tokens=16,
                 request_id="croptwist-live-provider-probe",
