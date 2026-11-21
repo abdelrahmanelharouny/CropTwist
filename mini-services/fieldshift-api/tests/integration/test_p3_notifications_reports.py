@@ -23,7 +23,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.db.models_p3 import ReportJob
+from app.db.models_p3 import Notification, ReportJob
 from app.notifications import service as notifications_service
 from app.reports import service as reports_service
 
@@ -138,6 +138,52 @@ class TestNotificationCenter:
             "/api/v1/notifications", headers=headers, params={"severity": "loud"}
         )
         assert invalid.status_code == 422
+
+
+    def test_severity_filter_uses_database_pagination_and_exact_aggregates(
+        self, client, auth_headers, db
+    ):
+        headers, user = auth_headers
+        org = uuid.UUID(user["organization"]["id"])
+        now = datetime.now(UTC)
+
+        # More than one service page, with mixed severities and read states.
+        # A page-first Python filter used to return a partial total once it
+        # had collected enough matching rows for the requested page.
+        for index in range(235):
+            row = self._emit(
+                db,
+                str(org),
+                category="system",
+                title=f"Critical {index}",
+                severity="critical",
+                commit=False,
+            )
+            if index < 17:
+                row.read_at = now
+        for index in range(215):
+            self._emit(
+                db,
+                str(org),
+                category="system",
+                title=f"Info {index}",
+                severity="info",
+                commit=False,
+            )
+        db.commit()
+
+        response = client.get(
+            "/api/v1/notifications",
+            headers=headers,
+            params={"severity": "critical", "limit": 20, "offset": 30},
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["total"] == 235
+        assert payload["unread"] == 218
+        assert len(payload["items"]) == 20
+        assert all(item["severity"] == "critical" for item in payload["items"])
+        assert payload["items"][0]["title"] == "Critical 30"
 
     def test_mark_read_unread_and_read_all(self, client, auth_headers, db):
         headers, user = auth_headers
