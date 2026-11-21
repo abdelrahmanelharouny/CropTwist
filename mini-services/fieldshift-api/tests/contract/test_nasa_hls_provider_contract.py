@@ -412,7 +412,7 @@ def test_per_scene_degradation_degrades_only_that_scene(monkeypatch):
             "scene_id": good,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
         },
         bad: {
             "scene_id": bad,
@@ -450,7 +450,7 @@ def test_fmask_masks_high_aerosol_pixels(monkeypatch):
             "scene_id": scene_id,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
         }
     }
     result = provider.fetch_observations(
@@ -486,7 +486,7 @@ def test_fmask_aerosol_low_and_medium_bit_patterns_are_not_swapped(monkeypatch):
             "scene_id": scene_id,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
         }
     }
     result = provider.fetch_observations(
@@ -516,7 +516,7 @@ def test_scene_without_fmask_is_skipped_instead_of_claiming_qa_masking(monkeypat
             "scene_id": scene_id,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif"},
         }
     }
     result = provider.fetch_observations(
@@ -573,7 +573,7 @@ def test_hls_raster_exception_does_not_leak_signed_asset_url(monkeypatch):
             "scene_id": scene_id,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
         }
     }
     result = provider.fetch_observations(
