@@ -20,11 +20,14 @@ on:
     branches: [main]
   pull_request:
 
-# Push and pull_request events for the same head share one run group.
-# New commits supersede older runs instead of consuming duplicate PostGIS jobs.
+# Push and pull_request events for the same branch share one run group.
+# This avoids duplicate PostGIS + frontend jobs for each feature-branch push.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   backend:
