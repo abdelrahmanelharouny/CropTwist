@@ -627,3 +627,35 @@ def test_hls_scene_record_rejects_mismatched_identity_and_invalid_cloud_cover():
     record["cloud_cover_pct"] = float("nan")
     with pytest.raises(ProviderRequestError, match="invalid cloud-cover"):
         hls_provider_module._validate_scene_record("scene-1", record)
+
+def test_hls_explicit_scene_records_must_match_requested_date_range():
+    from app.core.errors import ProviderRequestError
+
+    provider = NasaHlsProvider()
+    scene_id = "HLS.L30.T16SDC.2023189T164537.v2.0"
+    record = {
+        "scene_id": scene_id,
+        "collection": "HLSL30",
+        "acquired_at": "2023-07-08T16:45:37+00:00",
+        "assets": {},
+    }
+    with pytest.raises(ProviderRequestError, match="outside the requested time range"):
+        provider._resolve_targets(
+            {"scene_ids": [scene_id], "scene_records": {scene_id: record}},
+            datetime(2024, 7, 1, tzinfo=UTC),
+            datetime(2024, 7, 31, tzinfo=UTC),
+            FIELD_GEOMETRY,
+        )
+
+
+def test_hls_explicit_scene_records_validate_keys_before_sorting():
+    from app.core.errors import ProviderRequestError
+
+    provider = NasaHlsProvider()
+    with pytest.raises(ProviderRequestError, match="bounded identifier"):
+        provider._resolve_targets(
+            {"scene_records": {1: {"scene_id": "scene-1"}}},
+            datetime(2024, 7, 1, tzinfo=UTC),
+            datetime(2024, 7, 31, tzinfo=UTC),
+            FIELD_GEOMETRY,
+        )
