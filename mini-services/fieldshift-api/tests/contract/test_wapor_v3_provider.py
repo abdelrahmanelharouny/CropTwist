@@ -90,7 +90,7 @@ def test_field_window_masks_outside_field_and_preserves_raw_units(monkeypatch):
     monkeypatch.setattr(
         wapor_v3,
         "get_product",
-        lambda code: type("Product", (), {"resolution_m": 100})(),
+        lambda code: type("Product", (), {"resolution_m": 100, "unit": "mm/day", "scale_factor": 0.1, "metadata_reference": "https://example.org/spec"})(),
     )
     monkeypatch.setattr(
         wapor_v3,
@@ -121,4 +121,7 @@ def test_field_window_masks_outside_field_and_preserves_raw_units(monkeypatch):
     assert result.unit == "mm/dekad"
     assert result.scale_factor == 0.1
     assert result.offset == 0.0
+    assert result.scaled_mean == pytest.approx(0.2)
+    assert result.scaled_median == pytest.approx(0.2)
+    assert result.metadata_reference == "https://example.org/spec"
     assert np.isnan(result.array[0, 1])
