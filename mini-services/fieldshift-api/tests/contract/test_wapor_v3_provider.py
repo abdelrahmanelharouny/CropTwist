@@ -121,7 +121,7 @@ def test_field_window_masks_outside_field_and_preserves_raw_units(monkeypatch):
     )
     assert result.valid_pixel_count == 2
     assert result.raw_mean == 2.0
-    assert result.unit == "mm/dekad"
+    assert result.unit == "mm/day"
     assert result.scale_factor == 0.1
     assert result.offset == 0.0
     assert result.scaled_mean == pytest.approx(0.2)
@@ -214,10 +214,12 @@ def test_invalid_scale_offset_and_unit_fall_back_to_documented_metadata(monkeypa
         },
         geometry_geojson={"type": "Polygon", "coordinates": []},
     )
-    assert result.scale_factor == 0.2
+    # Conflicting upstream scale/unit metadata is not promoted to canonical
+    # physical values; only the raw raster statistics remain trustworthy.
+    assert result.scale_factor is None
     assert result.offset == 0.0
-    assert result.unit == "mm/dekad"
-    assert result.scaled_mean == pytest.approx(0.4)
+    assert result.unit is None
+    assert result.scaled_mean is None
 
 
 def test_wapor_provider_rejects_naive_datetimes_before_provider_io():
