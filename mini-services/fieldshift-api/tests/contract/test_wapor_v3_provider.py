@@ -354,3 +354,53 @@ def test_malformed_catalogue_scale_and_unit_are_not_replaced_by_defaults(monkeyp
     assert result.scale_factor is None
     assert result.unit is None
     assert result.scaled_mean is None
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif?X-Goog-Signature=secret",
+        "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif#fragment",
+    ],
+)
+def test_raster_url_rejects_signed_or_fragmented_asset_references(url):
+    assert not wapor_v3._safe_raster_url(url)
+
+
+def test_read_field_window_accepts_canonical_period_code(monkeypatch):
+    class Reading:
+        arrays = {"wapor": np.array([[1.0]])}
+        crs = "EPSG:32636"
+        transform = object()
+        width = 1
+        height = 1
+
+    monkeypatch.setattr(
+        wapor_v3,
+        "get_product",
+        lambda code: type("Product", (), {
+            "resolution_m": 100, "unit": "mm/day", "scale_factor": 0.1,
+            "metadata_reference": "https://example.org/spec", "license": "CC BY-SA 4.0",
+        })(),
+    )
+    monkeypatch.setattr(
+        wapor_v3,
+        "_read_raster_metadata",
+        lambda url: {"unit": "mm/day", "scale_factor": 0.1, "offset": 0.0, "nodata": None, "is_tiled": True},
+    )
+    monkeypatch.setattr("app.geospatial.preprocessing.read_scene_window", lambda **kwargs: Reading())
+    monkeypatch.setattr(
+        "app.geospatial.preprocessing.field_mask_for_window",
+        lambda **kwargs: np.array([[True]]),
+    )
+    result = wapor_v3.WaPORV3Client().read_field_window(
+        mapset_code="L2-T-D",
+        raster={
+            "code": "WAPOR-3.L2-T-D.2025-01-D1",
+            "period_code": "2025-01-D1",
+            "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
+        },
+        geometry_geojson={"type": "Polygon", "coordinates": []},
+    )
+    assert result.valid_pixel_count == 1
+    assert result.period_code == "2025-01-D1"
