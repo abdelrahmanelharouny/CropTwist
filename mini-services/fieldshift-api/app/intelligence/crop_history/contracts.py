@@ -6,6 +6,7 @@ claim a crop prediction until a trained, versioned model is loaded and evaluated
 from __future__ import annotations
 
 from datetime import date
+from random import Random
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -80,20 +81,24 @@ class CropHistoryRecord(BaseModel):
         return self
 
 
-def split_group_ids(records: list[CropHistoryRecord]) -> dict[str, list[str]]:
-    """Return deterministic farm-level train/validation/test IDs.
+def split_group_ids(records: list[CropHistoryRecord], *, seed: int = 42) -> dict[str, list[str]]:
+    """Return reproducible farm-level splits without lexical/geographic ordering bias.
 
-    Grouping by farm, rather than field or image, prevents spatial leakage.
-    A minimum of three distinct farm groups is required for a three-way split.
+    Farms, not fields or images, are the split unit. A seeded shuffle makes the
+    result independent of input order and avoids assigning adjacent/lexically
+    similar farm identifiers to the same split. Persist this manifest with each run.
     """
+    if not isinstance(seed, int) or isinstance(seed, bool):
+        raise ValueError("split seed must be an integer")
     groups = sorted({record.farm_group_id for record in records})
     if len(groups) < 3:
         raise ValueError("at least three independent farm groups are required")
+    Random(seed).shuffle(groups)
     train_end = max(1, int(len(groups) * 0.60))
     validation_end = max(train_end + 1, int(len(groups) * 0.80))
     validation_end = min(validation_end, len(groups) - 1)
     return {
-        "train": groups[:train_end],
-        "validation": groups[train_end:validation_end],
-        "test": groups[validation_end:],
+        "train": sorted(groups[:train_end]),
+        "validation": sorted(groups[train_end:validation_end]),
+        "test": sorted(groups[validation_end:]),
     }
