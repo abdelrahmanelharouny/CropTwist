@@ -173,8 +173,9 @@ class WaPORV3Client:
                 "download_url": download_url,
                 "unit": item.get("unit") if isinstance(item.get("unit"), str) else None,
                 "scale_factor": item.get("scale") if isinstance(item.get("scale"), (int, float)) else None,
+                "offset": item.get("offset") if isinstance(item.get("offset"), (int, float)) else None,
                 "period_code": period_code,
-                "raw_metadata": {key: item[key] for key in ("unit", "scale", "startDate", "endDate") if key in item},
+                "raw_metadata": {key: item[key] for key in ("unit", "scale", "offset", "startDate", "endDate") if key in item},
             })
         return result
 
