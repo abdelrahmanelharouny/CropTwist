@@ -123,7 +123,11 @@ def write_training_csv(rows: list[dict[str, Any]], output_path: Path) -> None:
             writer.writeheader()
             for row in rows:
                 writer.writerow({
-                    **{key: row[key] for key in CSV_FIELDS if not key.startswith("embedding_")},
+                    **{
+                        key: row[key]
+                        for key in CSV_FIELDS
+                        if not (key.startswith("embedding_") and key[len("embedding_"):].isdigit())
+                    },
                     **{
                         f"embedding_{index}": row["embedding"][index]
                         for index in range(EMBEDDING_DIMENSION)
