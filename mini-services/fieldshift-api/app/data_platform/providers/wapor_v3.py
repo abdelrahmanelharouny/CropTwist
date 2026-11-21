@@ -276,7 +276,7 @@ class WaPORV3Client:
             or period_code != raster_code.rsplit(".", 1)[-1]
             or not _safe_raster_url(download_url)
         ):
-            raise ValueError("raster must be a catalogue record with a trusted FAO GeoTIFF URL and matching period")
+            raise ValueError("raster must be a catalogue record with a trusted FAO COG URL and matching period")
         try:
             raster_metadata = _read_raster_metadata(download_url)
             if not raster_metadata.get("is_tiled"):
