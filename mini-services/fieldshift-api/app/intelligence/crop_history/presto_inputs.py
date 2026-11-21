@@ -14,8 +14,8 @@ import numpy as np
 from app.intelligence.crop_history.contracts import CropHistoryRecord
 
 PRESTO_BANDS = (
-    "vv", "vh",
-    "b02", "b03", "b04", "b05", "b06", "b07", "b08", "b8a", "b11", "b12",
+    "vv_db", "vh_db",
+    "b02_dn", "b03_dn", "b04_dn", "b05_dn", "b06_dn", "b07_dn", "b08_dn", "b8a_dn", "b11_dn", "b12_dn",
     "temperature_2m_k", "total_precipitation_m",
     "elevation_m", "slope_degrees",
 )
@@ -61,9 +61,9 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
                 continue
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
                 raise ValueError(f"Presto input channel {name} must be finite numeric data")
-            if name in ("vv", "vh"):
+            if name in ("vv_db", "vh_db"):
                 normalized = (float(value) + 25.0) / 25.0
-            elif name in ("b02", "b03", "b04", "b05", "b06", "b07", "b08", "b8a", "b11", "b12"):
+            elif name in ("b02_dn", "b03_dn", "b04_dn", "b05_dn", "b06_dn", "b07_dn", "b08_dn", "b8a_dn", "b11_dn", "b12_dn"):
                 normalized = float(value) / 10000.0
             elif name == "temperature_2m_k":
                 normalized = (float(value) - 272.15) / 35.0
@@ -79,8 +79,8 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
             dynamic_world[timestep] = month.dynamic_world_class
 
         # NDVI is derived only when both reflectance inputs are present.
-        red_index = PRESTO_BANDS.index("b04")
-        nir_index = PRESTO_BANDS.index("b08")
+        red_index = PRESTO_BANDS.index("b04_dn")
+        nir_index = PRESTO_BANDS.index("b08_dn")
         ndvi_index = len(PRESTO_BANDS)
         if mask[timestep, red_index] == 0 and mask[timestep, nir_index] == 0:
             red, nir = x[timestep, red_index], x[timestep, nir_index]
