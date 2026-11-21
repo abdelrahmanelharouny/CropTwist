@@ -99,3 +99,36 @@ def test_presto_input_rejects_sentinel1_values_outside_upstream_normalization_ra
     record.months[0].presto_bands[band] = value
     with pytest.raises(ValueError, match="outside its expected source-unit range"):
         build_presto_input(record)
+
+@pytest.mark.parametrize(
+    "latitude, longitude",
+    [(float("nan"), 31.2), (30.1, float("inf")), (91.0, 31.2), (30.1, 181.0), (True, 31.2)],
+)
+def test_presto_input_rejects_invalid_field_centroids(latitude, longitude):
+    record = _record()
+    record.centroid_lat = latitude
+    record.centroid_lon = longitude
+    with pytest.raises(ValueError, match="finite verified field centroid"):
+        build_presto_input(record)
+
+
+def test_presto_input_rejects_duplicate_month_records():
+    record = _record()
+    record.months.append(record.months[0].model_copy(deep=True))
+    with pytest.raises(ValueError, match="months must be unique"):
+        build_presto_input(record)
+
+
+@pytest.mark.parametrize("dynamic_class", [-1, 9, 10, True, 4.5])
+def test_presto_input_rejects_invalid_dynamic_world_classes(dynamic_class):
+    record = _record()
+    record.months[0].dynamic_world_class = dynamic_class
+    with pytest.raises(ValueError, match="Dynamic World class"):
+        build_presto_input(record)
+
+
+def test_presto_input_rejects_overflowing_raw_band_values():
+    record = _record()
+    record.months[0].presto_bands["b04_dn"] = 10**10000
+    with pytest.raises(ValueError, match="finite numeric data"):
+        build_presto_input(record)
