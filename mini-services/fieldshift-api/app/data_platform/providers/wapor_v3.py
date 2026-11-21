@@ -1,8 +1,9 @@
 """Read-only FAO WaPOR v3 catalogue and bounded tiled GeoTIFF field-window access.
 
-The FAO v3 API is public and does not require a token. Raster values remain
-raw until the corresponding live mapset/raster metadata establishes scale
-and units. This module never silently converts or invents canonical units.
+The FAO v3 API is public and does not require a token. Raw raster statistics
+are always retained; scaled summaries are added only when unit and scale are
+supported by API metadata, GeoTIFF tags or the cited WaPOR product specification.
+This module never invents canonical CropTwist variables.
 """
 from __future__ import annotations
 
