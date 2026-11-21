@@ -13,6 +13,8 @@ import numpy as np
 
 from app.intelligence.crop_history.contracts import CropHistoryRecord
 
+PRESTO_INPUT_SCHEMA_VERSION = "presto-17ch-12m-v1"
+
 PRESTO_BANDS = (
     "vv_db", "vh_db",
     "b02_dn", "b03_dn", "b04_dn", "b05_dn", "b06_dn", "b07_dn", "b08_dn", "b8a_dn", "b11_dn", "b12_dn",
