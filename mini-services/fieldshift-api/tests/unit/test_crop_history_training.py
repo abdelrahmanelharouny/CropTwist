@@ -60,3 +60,17 @@ def test_spatiotemporal_holdout_rejects_unseen_test_crop_class():
         assert "absent from training" in str(exc)
     else:
         raise AssertionError("unseen crop classes must fail closed")
+
+def test_training_data_blocks_unverified_label_provenance():
+    rows = [
+        _row("f1", "farm1", "zankalon", 2023, "wheat"),
+        _row("f2", "farm2", "sidi_ghazi", 2023, "maize"),
+        _row("f3", "farm3", "mallawi", 2023, "clover"),
+    ]
+    rows[0]["label_license_verified"] = False
+    try:
+        validate_training_rows(rows)
+    except ValueError as exc:
+        assert "unverified label license" in str(exc)
+    else:
+        raise AssertionError("unverified license must block training")
