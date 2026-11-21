@@ -68,3 +68,26 @@ def test_embedding_eval_cosine_rejects_boolean_components():
 
     with pytest.raises(ValueError, match="non-finite or non-numeric"):
         _cosine([True, 0.0], [1.0, 0.0])
+
+
+
+@pytest.mark.parametrize("bad_ks", [(True,), (1.5,), ("1",), (), []])
+def test_ranking_metrics_reject_malformed_cutoffs(bad_ks):
+    with pytest.raises(ValueError, match="positive integers"):
+        evaluate_rankings(
+            query_ids=["q"],
+            document_ids=["d1"],
+            rankings={"q": ["d1"]},
+            relevant_document_ids={"q": {"d1"}},
+            ks=bad_ks,
+        )
+
+
+def test_ranking_metrics_accept_list_relevance_judgements():
+    result = evaluate_rankings(
+        query_ids=["q"],
+        document_ids=["d1", "d2"],
+        rankings={"q": ["d1", "d2"]},
+        relevant_document_ids={"q": ["d1"]},
+    )
+    assert result["metrics"]["recall@1"] == pytest.approx(1.0)
