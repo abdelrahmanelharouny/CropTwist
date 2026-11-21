@@ -6,7 +6,7 @@ The implementation follows FAO's official [WaPOR v3 API tutorial](https://github
 
 - Public catalogue root: `https://data.apps.fao.org/gismgr/api/v2/catalog/workspaces/WAPOR-3/mapsets`
 - Mapset rasters: append `/{mapset_code}/rasters`
-- FAO's notebook retrieves `downloadUrl` links that resolve to public Cloud Storage GeoTIFF/COG assets.
+- FAO's notebook retrieves `downloadUrl` links that resolve to public Cloud Storage GeoTIFF assets.
 - The official notebook performs ordinary GET requests without an API token; no user credential is required for catalogue discovery.
 - Pagination is represented by `response.links` entries with `rel=next`.
 
@@ -15,7 +15,7 @@ The implementation follows FAO's official [WaPOR v3 API tutorial](https://github
 - Strict HTTPS host/path allowlisting for pagination and raster download links.
 - Bounded pagination (50 pages / 100,000 items) and response-size limits.
 - Product allowlisting against the CropTwist WaPOR v3 registry.
-- Field-window-only COG reads using the existing CRS-aware geospatial reader; no whole-scene raster download.
+- Field-window-only reads using the existing CRS-aware geospatial reader. Non-tiled rasters are rejected; asset tiling/layout/overviews are recorded for audit.
 - Field-polygon masking before statistics.
 - Raw mean/median and valid/nodata pixel counts with source URL, mapset, raster ID, period code and native resolution.
 
