@@ -6,10 +6,11 @@ claim a crop prediction until a trained, versioned model is loaded and evaluated
 from __future__ import annotations
 
 from datetime import date
+import math
 from random import Random
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CropCode = str
 FeatureName = Literal["ndvi", "evi", "ndmi", "ndwi", "vv_db", "vh_db", "rainfall_mm", "temperature_c"]
@@ -25,6 +26,27 @@ class MonthlyCropFeatures(BaseModel):
     presto_bands: dict[str, float | None] = Field(default_factory=dict)
     dynamic_world_class: int | None = Field(default=None, ge=0, le=8)
     source_scene_ids: list[str] = Field(default_factory=list, max_length=100)
+
+    @field_validator("values", "presto_bands", mode="before")
+    @classmethod
+    def require_finite_numeric_feature_maps(cls, value):
+        if not isinstance(value, dict):
+            raise ValueError("monthly feature maps must be objects")
+        for name, item in value.items():
+            if item is not None and (
+                isinstance(item, bool)
+                or not isinstance(item, (int, float))
+                or not math.isfinite(float(item))
+            ):
+                raise ValueError(f"monthly feature {name} must be finite numeric data")
+        return value
+
+    @field_validator("dynamic_world_class", mode="before")
+    @classmethod
+    def require_integer_dynamic_world_class(cls, value):
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            raise ValueError("Dynamic World class must be an integer")
+        return value
 
     @model_validator(mode="after")
     def require_evidence_for_values(self) -> "MonthlyCropFeatures":
@@ -69,6 +91,17 @@ class CropHistoryRecord(BaseModel):
     label_license_verified: bool = False
     label_confidence: float | None = Field(default=None, ge=0, le=1)
     months: list[MonthlyCropFeatures] = Field(min_length=1, max_length=36)
+
+    @field_validator("valid_pixel_coverage", "centroid_lat", "centroid_lon", "label_confidence", mode="before")
+    @classmethod
+    def require_finite_numeric_record_metadata(cls, value):
+        if value is None:
+            return value
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("record numeric metadata must be finite numeric values")
+        if not math.isfinite(float(value)):
+            raise ValueError("record numeric metadata must be finite numeric values")
+        return value
 
     @model_validator(mode="after")
     def validate_label_and_months(self) -> "CropHistoryRecord":
