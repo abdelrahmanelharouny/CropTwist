@@ -18,7 +18,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from app.core.errors import ProviderUnavailable, UnsupportedVariable, ValidationFailed
+from app.core.errors import InvalidDateRange, ProviderUnavailable, UnsupportedVariable, ValidationFailed
 from app.data_platform.contracts.observations import (
     AreaOfInterest,
     CanonicalObservation,
@@ -396,6 +396,7 @@ class WaPORV3Provider:
         if start.tzinfo is None or end.tzinfo is None:
             raise InvalidDateRange("WaPOR requests require timezone-aware start/end timestamps.")
         validate_provider_request(variables, start, end)
+        start_utc, end_utc = start.astimezone(UTC), end.astimezone(UTC)
         if options is None:
             options = {}
         if not isinstance(options, dict):
