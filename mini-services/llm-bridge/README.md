@@ -4,6 +4,7 @@ Tiny Bun microservice exposing the JS-only `z-ai-web-dev-sdk` chat LLM over HTTP
 Port: `127.0.0.1:3035` (localhost only). Endpoints: `POST /chat` — body `{"messages":[{"role","content"},...],"temperature?","max_tokens?"}` → `{"content","model"}`; `GET /health` → `{"ok","ready","in_flight","uptime_s","auth_required","daily_requests"}`; `GET /metrics` → cumulative + per-UTC-day counters, latency percentiles.
 Guardrails: 400 invalid body, 401 missing/invalid token (when auth is on), 413 when total message content exceeds 60000 chars, 429 at ≥10 in-flight requests or when a daily budget is exhausted, 504 if the completion exceeds 90s, 502 if the SDK throws; messages pass through unmodified and `thinking` is always disabled.
 The backend calls `http://127.0.0.1:3035/chat` for LLM-backed features and treats this service as optional (non-200 → degrade gracefully).
+**Privacy boundary:** `127.0.0.1` describes only the bridge's local HTTP listener. The `z-ai-web-dev-sdk` sends completion requests to its hosted service; this bridge is not local inference. Field-sensitive prompts are blocked by the backend unless the explicit provider-egress policy is approved.
 Run: `bun install && bun run dev` (auto-reload) or `bun run start`; the orchestrator starts it — do not keep a manual instance running.
 
 ## A9 security & resource controls (P1)
