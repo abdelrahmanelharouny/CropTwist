@@ -46,3 +46,10 @@ def test_provider_benchmark_uses_query_adapter_when_available():
     ))
     assert result["metrics"]["recall@1"] == 1.0
     assert result["provider"] == "fake"
+
+def test_knowledge_chunk_size_respects_multilingual_model_context():
+    from app.intelligence.orchestration.knowledge import chunk_document
+
+    chunks = chunk_document("Crop rotation improves soil health. " * 40)
+    assert chunks
+    assert max(len(chunk) for chunk in chunks) <= 400
