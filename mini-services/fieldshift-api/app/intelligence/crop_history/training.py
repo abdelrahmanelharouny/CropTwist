@@ -81,13 +81,21 @@ def spatial_temporal_holdout(
     target_year: int,
 ) -> tuple[list[int], list[int]]:
     """Train on earlier seasons outside one region; test on that region in target year."""
+    if isinstance(target_year, bool) or not isinstance(target_year, int) or not 2000 <= target_year <= 2100:
+        raise ValueError("target_year must be an integer year in the supported range")
+    if not isinstance(held_out_region, str) or not held_out_region.strip():
+        raise ValueError("held_out_region must be a non-empty region identifier")
+    for index, row in enumerate(rows):
+        year = row.get("season_year") if isinstance(row, dict) else None
+        if isinstance(year, bool) or not isinstance(year, int) or not 2000 <= year <= 2100:
+            raise ValueError(f"row {index} season_year must be an integer year in the supported range")
     train_indices = [
         i for i, row in enumerate(rows)
-        if row["region_id"] != held_out_region and int(row["season_year"]) < target_year
+        if row["region_id"] != held_out_region and row["season_year"] < target_year
     ]
     test_indices = [
         i for i, row in enumerate(rows)
-        if row["region_id"] == held_out_region and int(row["season_year"]) == target_year
+        if row["region_id"] == held_out_region and row["season_year"] == target_year
     ]
     if not train_indices or not test_indices:
         raise ValueError("spatiotemporal holdout has an empty train or test partition")
