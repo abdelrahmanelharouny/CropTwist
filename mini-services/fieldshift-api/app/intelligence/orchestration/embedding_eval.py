@@ -8,6 +8,8 @@ from typing import Any
 def _cosine(left: list[float], right: list[float]) -> float:
     if len(left) != len(right) or not left:
         raise ValueError("embedding dimensions do not match")
+    if not all(math.isfinite(float(value)) for value in [*left, *right]):
+        raise ValueError("embedding contains non-finite values")
     dot = sum(a * b for a, b in zip(left, right, strict=True))
     left_norm = math.sqrt(sum(a * a for a in left))
     right_norm = math.sqrt(sum(b * b for b in right))
@@ -31,8 +33,9 @@ def evaluate_rankings(
         raise ValueError("every query requires relevance judgements and a ranking")
     if any(not relevant_document_ids[qid] for qid in query_ids):
         raise ValueError("every benchmark query must have at least one relevant document")
-    if any(k < 1 or k > len(document_ids) for k in ks):
-        raise ValueError("evaluation k is outside the document collection")
+    effective_ks = tuple(k for k in ks if 1 <= k <= len(document_ids))
+    if not effective_ks:
+        raise ValueError("evaluation requires at least one valid k")
     doc_set = set(document_ids)
     metrics: dict[str, float] = {}
     per_query: dict[str, dict[str, float]] = {}
@@ -45,7 +48,7 @@ def evaluate_rankings(
             raise ValueError("relevance judgement references an unknown document")
         first_rank = next((rank for rank, doc_id in enumerate(ranking, start=1) if doc_id in relevant), None)
         row = {"mrr": 1.0 / first_rank if first_rank else 0.0}
-        for k in ks:
+        for k in effective_ks:
             top = ranking[:k]
             hits = sum(doc_id in relevant for doc_id in top)
             row[f"recall@{k}"] = hits / len(relevant)
