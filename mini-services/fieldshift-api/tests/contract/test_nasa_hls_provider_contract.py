@@ -545,6 +545,28 @@ def test_scene_records_without_acquired_at_rejected():
         )
 
 
+@pytest.mark.parametrize(
+    "scene_ids",
+    [
+        [],
+        "",
+        [""],
+        [True],
+        ["scene-a", "scene-a"],
+        ["x" * 257],
+    ],
+)
+def test_resolve_targets_rejects_malformed_explicit_scene_selectors(scene_ids):
+    provider = NasaHlsProvider()
+    with pytest.raises(ProviderRequestError, match="scene_ids"):
+        provider._resolve_targets(
+            {"scene_ids": scene_ids, "scene_records": {}},
+            start=datetime(2024, 7, 1, tzinfo=UTC),
+            end=datetime(2024, 7, 31, tzinfo=UTC),
+            geometry_geojson=FIELD_GEOMETRY,
+        )
+
+
 def test_validate_request_enforces_scene_cap():
     provider = NasaHlsProvider()
     from app.core.config import settings
