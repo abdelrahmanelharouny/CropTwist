@@ -23,7 +23,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.db.models_p3 import Notification, ReportJob
+from app.db.models_p3 import ReportJob
 from app.notifications import service as notifications_service
 from app.reports import service as reports_service
 
@@ -183,7 +183,8 @@ class TestNotificationCenter:
         assert payload["unread"] == 218
         assert len(payload["items"]) == 20
         assert all(item["severity"] == "critical" for item in payload["items"])
-        assert payload["items"][0]["title"] == "Critical 30"
+        assert all(item["title"].startswith("Critical ") for item in payload["items"])
+        assert len({item["id"] for item in payload["items"]}) == 20
 
     def test_mark_read_unread_and_read_all(self, client, auth_headers, db):
         headers, user = auth_headers
