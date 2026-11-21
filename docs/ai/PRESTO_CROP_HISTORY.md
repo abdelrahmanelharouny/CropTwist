@@ -74,7 +74,7 @@ python scripts/train_crop_history_classifier.py ./egypt-presto-embeddings.csv
 The script uses CatBoost on CPU and evaluates a strict leave-one-region-out
 plus latest-season holdout. It requires explicitly verified label source/license flags, disjoint farm groups, class-complete
 training and calibration partitions, and source/license metadata for every
-label. Temperature scaling is fitted only on farm-disjoint calibration groups.
+label. Temperature scaling is fitted on farm-disjoint out-of-fold logits (GroupKFold by farm), then the final fold model is refit on all outer-training records.
 The report includes macro-F1, balanced accuracy, multiclass Brier score, ECE,
 per-class F1 and abstention coverage/selective accuracy at a fixed 0.60
 confidence threshold.
