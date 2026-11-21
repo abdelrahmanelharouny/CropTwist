@@ -157,3 +157,27 @@ def test_probe_handles_non_string_exception_category(monkeypatch):
     result = asyncio.run(provider_diagnostics.probe_provider("broken"))
     assert result["status"] == "failed"
     assert result["error_category"] == "provider_probe_failed"
+
+
+def test_legacy_bridge_probe_marks_only_fixed_synthetic_prompt_non_sensitive(monkeypatch):
+    from app.intelligence import bridge
+    from app.intelligence.orchestration.provider import LegacyBridgeProvider
+
+    captured = {}
+
+    async def fake_achat_detail(messages, **kwargs):
+        captured["messages"] = messages
+        captured["kwargs"] = kwargs
+        return {"content": "CROPTWIST_PROVIDER_OK", "model": "bridge-model"}
+
+    monkeypatch.setattr(bridge, "achat_detail", fake_achat_detail)
+    monkeypatch.setattr(
+        provider_diagnostics.provider_registry,
+        "get",
+        lambda name: LegacyBridgeProvider(),
+    )
+    result = asyncio.run(provider_diagnostics.probe_provider("legacy-llm-bridge"))
+
+    assert result["status"] == "live_verified"
+    assert captured["kwargs"]["field_sensitive"] is False
+    assert captured["messages"][-1]["content"] == "Reply with exactly CROPTWIST_PROVIDER_OK."
