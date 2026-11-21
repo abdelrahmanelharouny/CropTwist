@@ -366,3 +366,31 @@ def test_ollama_rejects_non_object_messages_before_request():
             schema=None,
             stream=False,
         )
+
+
+@pytest.mark.parametrize(
+    "body,error_category",
+    [
+        (
+            {"message": {"content": "partial"}, "done": False},
+            "provider_incomplete_response",
+        ),
+        (
+            {"message": {"content": "truncated"}, "done": True, "done_reason": "length"},
+            "provider_output_truncated",
+        ),
+        (
+            {"message": {"content": "missing terminal"}, "done": None},
+            "provider_incomplete_response",
+        ),
+    ],
+)
+def test_ollama_rejects_incomplete_or_truncated_responses(body, error_category):
+    provider = OllamaProvider(
+        base_url="http://127.0.0.1:11434",
+        num_ctx=8192,
+        keep_alive="5m",
+        **_provider_kwargs(httpx.MockTransport(lambda request: httpx.Response(200, json={}))),
+    )
+    with pytest.raises(ProviderFailure, match=error_category):
+        provider._parse_response(body)
