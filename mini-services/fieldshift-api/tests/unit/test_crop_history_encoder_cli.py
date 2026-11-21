@@ -98,3 +98,14 @@ def test_training_csv_has_explicit_model_schema_and_embedding_columns(tmp_path):
     assert saved["embedding_model"] == "torchgeo/presto:PRESTO"
     assert saved["input_schema_version"] == "presto-17ch-12m-v1"
     assert float(saved["embedding_127"]) == pytest.approx(0.25)
+
+
+
+@pytest.mark.parametrize("bad_batch_size", [True, 1.5, "4", 0, 129])
+def test_encoder_rejects_non_integer_or_out_of_range_batch_sizes(bad_batch_size):
+    with pytest.raises(ValueError, match="batch size"):
+        encoder.encode_training_rows(
+            [_record(0, "north", "WHEAT")],
+            bundle=type("Bundle", (), {"model_id": "torchgeo/presto:PRESTO"})(),
+            batch_size=bad_batch_size,
+        )
