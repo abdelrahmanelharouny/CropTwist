@@ -57,3 +57,13 @@ def test_split_is_farm_level_deterministic_and_disjoint():
 def test_split_requires_independent_farm_groups():
     with pytest.raises(ValueError, match="three independent farm groups"):
         split_group_ids([_record("same"), _record("same", "field-2")])
+
+def test_labelled_record_requires_verified_source_and_license():
+    with pytest.raises(ValidationError, match="verified source and license"):
+        CropHistoryRecord(
+            field_id="f", farm_group_id="farm", country_code="EGY",
+            geometry_hash="0123456789abcdef",
+            season_start=date(2025, 1, 1), season_end=date(2025, 12, 31),
+            label_crop_code="WHEAT", label_source="verified_farmer_record",
+            months=[MonthlyCropFeatures(month=1, year=2025, values={}, valid_observation_count=0)],
+        )
