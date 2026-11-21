@@ -50,3 +50,26 @@ def test_wapor_canonical_variables_keep_distinct_physical_meanings_and_units():
     assert VARIABLE_CATALOG["relative_soil_moisture"].unit == "%"
     assert VARIABLE_CATALOG["relative_soil_moisture"].code != "soil_moisture_surface"
     assert VARIABLE_CATALOG["net_primary_productivity"].unit == "gC/m2/day"
+
+
+def test_wapor_provider_variables_are_registered_as_distinct_canonical_codes():
+    from app.data_platform.contracts.variables import VARIABLE_CATALOG
+    from app.data_platform.providers.wapor_v3 import WAPOR_EGYPT_L2_VARIABLE_MAP, WaPORV3Provider
+
+    assert set(WaPORV3Provider.supported_variables()) == set(WAPOR_EGYPT_L2_VARIABLE_MAP)
+    for variable in WaPORV3Provider.supported_variables():
+        definition = VARIABLE_CATALOG[variable]
+        assert definition.typical_time_support == "dekadal"
+        assert definition.evidence_class_hint == "satellite_derived_estimate"
+
+    assert VARIABLE_CATALOG["actual_evapotranspiration_interception"].unit == "mm/day"
+    assert VARIABLE_CATALOG["relative_soil_moisture"].unit == "%"
+    assert VARIABLE_CATALOG["net_primary_productivity"].unit == "gC/m2/day"
+
+
+def test_wapor_provider_is_registered_for_environmental_ingestion():
+    from app.data_platform.registry.provider_registry import get_provider_registry
+    from app.data_platform.providers.wapor_v3 import WaPORV3Provider
+
+    provider = get_provider_registry().get("fao_wapor_v3")
+    assert isinstance(provider, WaPORV3Provider)
