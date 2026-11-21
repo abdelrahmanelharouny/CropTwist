@@ -6,8 +6,8 @@ mask; zero is never used as an unmarked substitute for missing data.
 """
 from __future__ import annotations
 
-from datetime import date
 import math
+from datetime import date
 from typing import Any
 
 import numpy as np
@@ -74,9 +74,12 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
         raw = month.presto_bands if month else {}
         if not isinstance(raw, dict):
             raise ValueError("Presto monthly bands must be an object")
-        unknown_channels = set(raw) - set(PRESTO_BANDS)
+        unknown_channels = [
+            channel for channel in raw
+            if not isinstance(channel, str) or channel not in PRESTO_BANDS
+        ]
         if unknown_channels:
-            raise ValueError(f"Presto input contains unsupported channel(s): {sorted(unknown_channels)}")
+            raise ValueError("Presto input contains unsupported channel keys")
         for channel_index, name in enumerate(PRESTO_BANDS):
             value = raw.get(name)
             if value is None:
@@ -103,7 +106,7 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
             lower, upper = bounds[name]
             if not lower <= numeric_value <= upper:
                 raise ValueError(f"Presto input channel {name} is outside its expected source-unit range")
-            if name.endswith("_dn") and float(value) < 10.0:
+            if name.endswith("_dn") and numeric_value < 10.0:
                 raise ValueError(f"Presto input channel {name} expects raw scaled DN, not physical reflectance or nodata")
             if name in ("vv_db", "vh_db"):
                 normalized = (numeric_value + 25.0) / 25.0
