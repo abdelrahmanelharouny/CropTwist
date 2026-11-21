@@ -21,7 +21,7 @@ The implementation follows FAO's official [WaPOR v3 API tutorial](https://github
 
 ## Scientific guardrails
 
-- Raw raster values are always retained. Scale and unit precedence is: API raster metadata, GeoTIFF band tags, then the documented WaPOR v3 product specification. If either unit or scale remains unknown, physical-value summaries remain `null` and only raw statistics are exposed.
+- Raw raster values are always retained. The versioned WaPOR v3 product specification is the canonical reference; every reported API and GeoTIFF unit/scale/offset value is treated as an additional consistency check. Missing metadata may rely on the published specification, but malformed or conflicting metadata from any available source withholds scaled physical summaries. If the documented unit or scale is unresolved, only raw statistics are exposed.
 - Scaled mean/median are reported only when both a documented unit and scale factor are available; the raw mean/median remain alongside them for auditability.
 - The scale/unit reference is [Digital Earth Africa's WaPOR v3 specification](https://docs.digitalearthafrica.org/en/latest/data_specs/WaPOR_specs.html), which documents units and scale factors per L1/L2 mapset.
 - The same specification states the data is provided free of charge under **CC BY-SA 4.0**. The license is carried in each returned raster record and must be retained in derived-data attribution.
