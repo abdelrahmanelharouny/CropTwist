@@ -17,7 +17,7 @@ def validate_training_rows(rows: list[dict[str, Any]]) -> None:
         raise ValueError("training dataset is empty")
     required = {
         "field_id", "farm_group_id", "region_id", "season_year",
-        "crop_code", "label_source", "label_license", "valid_pixel_coverage",
+        "crop_code", "label_source", "label_source_verified", "label_license", "label_license_verified", "valid_pixel_coverage",
     }
     seen: set[tuple[str, int]] = set()
     regions: set[str] = set()
@@ -29,8 +29,10 @@ def validate_training_rows(rows: list[dict[str, Any]]) -> None:
         for key in ("field_id", "farm_group_id", "region_id", "crop_code", "label_license"):
             if not isinstance(row[key], str) or not row[key].strip():
                 raise ValueError(f"row {index} has empty {key}")
-        if row["label_source"] not in ALLOWED_LABEL_SOURCES:
-            raise ValueError(f"row {index} has an unapproved label source")
+        if row["label_source"] not in ALLOWED_LABEL_SOURCES or row["label_source_verified"] is not True:
+            raise ValueError(f"row {index} has an unverified or unapproved label source")
+        if row["label_license_verified"] is not True:
+            raise ValueError(f"row {index} has an unverified label license")
         year = int(row["season_year"])
         key = (row["field_id"], year)
         if key in seen:
