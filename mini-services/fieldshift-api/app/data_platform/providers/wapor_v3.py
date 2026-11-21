@@ -103,21 +103,41 @@ def _read_raster_metadata(url: str) -> dict[str, Any]:
             unit = tags.get("unit") or tags.get("units")
         if isinstance(unit, str) and unit.strip().casefold() in {"1", "unitless", "unknown"}:
             unit = None
-        scale_raw = tags.get("scale_factor") or tags.get("scale")
+        # Rasterio exposes GDAL band scale/offset separately from ordinary
+        # TIFF tags. Include non-neutral values so the catalogue cannot silently
+        # override a conflicting physical-unit transform. The defaults (1, 0)
+        # mean "no GDAL transform" and are therefore not treated as declarations.
+        scale_raw = tags.get("scale_factor")
+        if scale_raw is None:
+            scale_raw = tags.get("scale")
+        if scale_raw is None and dataset.scales:
+            band_scale = dataset.scales[0]
+            if band_scale != 1.0:
+                scale_raw = band_scale
         offset_raw = tags.get("offset")
+        if offset_raw is None and dataset.offsets:
+            band_offset = dataset.offsets[0]
+            if band_offset != 0.0:
+                offset_raw = band_offset
+        scale_metadata_invalid = False
+        offset_metadata_invalid = False
         try:
             scale = float(scale_raw) if scale_raw is not None else None
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             scale = None
+            scale_metadata_invalid = True
         try:
             offset = float(offset_raw) if offset_raw is not None else None
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             offset = None
+            offset_metadata_invalid = True
         image_structure = dataset.tags(ns="IMAGE_STRUCTURE")
         return {
             "unit": unit,
             "scale_factor": scale,
             "offset": offset,
+            "scale_metadata_invalid": scale_metadata_invalid,
+            "offset_metadata_invalid": offset_metadata_invalid,
             "nodata": dataset.nodata,
             "is_tiled": bool(dataset.is_tiled),
             "overview_levels": dataset.overviews(1),
@@ -325,7 +345,8 @@ class WaPORV3Client:
             if finite_number(value) and float(value) > 0
         ]
         scales_consistent = (
-            product.scale_factor is not None
+            not raster_metadata.get("scale_metadata_invalid", False)
+            and product.scale_factor is not None
             and len(valid_scales) == len(present_scales)
             and all(
                 math.isclose(value, product.scale_factor, rel_tol=1e-9, abs_tol=1e-12)
@@ -347,7 +368,9 @@ class WaPORV3Client:
         # only. Missing offsets imply zero; malformed or non-zero metadata is a
         # conflict and withholds scaled physical values.
         offset = (
-            0.0
+            None
+            if raster_metadata.get("offset_metadata_invalid", False)
+            else 0.0
             if not present_offsets
             else 0.0
             if len(valid_offsets) == len(present_offsets) and all(value == 0.0 for value in valid_offsets)
