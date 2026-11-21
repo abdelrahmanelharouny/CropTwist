@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from app.intelligence.orchestration.provider import (
     ProviderCapabilities,
@@ -20,9 +21,10 @@ from app.intelligence.orchestration.provider_adapters import (
     OpenRouterProvider,
     ProviderFailoverChain,
     ProviderFailure,
+    get_provider_chain,
     get_provider_statuses,
 )
-from app.intelligence.config import ai_settings
+from app.intelligence.config import AISettings, ai_settings
 from app.intelligence.orchestration import provider_adapters
 
 
@@ -317,3 +319,33 @@ def test_only_enabled_loopback_ollama_is_privacy_eligible(monkeypatch):
 
     monkeypatch.setattr(ai_settings, "ollama_enabled", False)
     assert provider_adapters._allowed_for_sensitive_data("ollama") is False
+
+
+def test_ollama_settings_reject_non_loopback_endpoints():
+    with pytest.raises(ValidationError, match="loopback"):
+        AISettings(ollama_base_url="http://example.com:11434")
+    with pytest.raises(ValidationError, match="loopback"):
+        AISettings(ollama_base_url="https://127.0.0.1:11434")
+
+
+def test_sensitive_provider_chain_never_falls_back_to_hosted_models_by_default(monkeypatch):
+    class FakeProvider:
+        def __init__(self, name):
+            self.name = name
+            self.model = name
+            self.configured = True
+            self.capabilities = ProviderCapabilities(streaming=False)
+
+    fake = {name: FakeProvider(name) for name in ("ollama", "gemini", "groq", "openrouter")}
+    from app.intelligence.orchestration.provider import provider_registry
+
+    monkeypatch.setattr(provider_registry, "get", lambda name: fake[name])
+    monkeypatch.setattr(ai_settings, "llm_enabled", True)
+    monkeypatch.setattr(ai_settings, "llm_provider_order", "ollama,gemini,groq,openrouter")
+    monkeypatch.setattr(ai_settings, "ollama_enabled", True)
+    monkeypatch.setattr(ai_settings, "ollama_base_url", "http://127.0.0.1:11434")
+    monkeypatch.setattr(ai_settings, "ai_allow_field_data_to_providers", False)
+
+    chain = get_provider_chain(field_sensitive=True)
+    assert [provider.name for provider in chain.providers] == ["ollama"]
+    assert chain.allow_sensitive_data is True
