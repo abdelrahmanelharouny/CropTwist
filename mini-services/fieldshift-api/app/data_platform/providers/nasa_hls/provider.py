@@ -390,22 +390,95 @@ def _record_to_scene_record(record: hls_catalog.HlsSceneRecord) -> dict[str, Any
 
 
 def _validate_scene_record(scene_id: str, record: Any) -> None:
+    """Validate caller-supplied discovery records before GDAL can open assets."""
+    from urllib.parse import urlsplit
+
+    if not isinstance(scene_id, str) or not scene_id.strip() or len(scene_id) > 256:
+        raise ProviderRequestError(
+            "Scene record key must be a non-empty bounded identifier.",
+            details=[{"field": "scene_records", "reason": "invalid scene id"}],
+        )
     if not isinstance(record, dict):
         raise ProviderRequestError(
             f"Scene record '{scene_id}' must be an object.",
             details=[{"field": "scene_records", "reason": "invalid shape"}],
         )
+    if record.get("scene_id") != scene_id:
+        raise ProviderRequestError(
+            f"Scene record '{scene_id}' has a mismatched scene identifier.",
+            details=[{"field": "scene_records", "reason": "scene_id mismatch"}],
+        )
     if record.get("collection") not in (PRODUCT_CODE_L30, PRODUCT_CODE_S30):
         raise ProviderRequestError(
-            f"Scene record '{scene_id}' has an unknown collection "
-            f"'{record.get('collection')}'.",
+            f"Scene record '{scene_id}' has an unknown collection.",
             details=[{"field": "scene_records", "reason": "expected HLSL30 or HLSS30"}],
         )
-    if not record.get("acquired_at"):
+    acquired_at = record.get("acquired_at")
+    if not isinstance(acquired_at, str) or not acquired_at:
         raise ProviderRequestError(
             f"Scene record '{scene_id}' has no acquisition timestamp.",
             details=[{"field": "scene_records", "reason": "acquired_at required"}],
         )
+    try:
+        timestamp = datetime.fromisoformat(acquired_at.replace("Z", "+00:00"))
+    except ValueError:
+        raise ProviderRequestError(
+            f"Scene record '{scene_id}' has an invalid acquisition timestamp.",
+            details=[{"field": "scene_records", "reason": "invalid acquired_at"}],
+        ) from None
+    if timestamp.tzinfo is None:
+        raise ProviderRequestError(
+            f"Scene record '{scene_id}' acquisition timestamp must include a timezone.",
+            details=[{"field": "scene_records", "reason": "timezone required"}],
+        )
+
+    cloud_cover = record.get("cloud_cover_pct")
+    if cloud_cover is not None and (
+        isinstance(cloud_cover, bool)
+        or not isinstance(cloud_cover, (int, float))
+        or not math.isfinite(float(cloud_cover))
+        or not 0.0 <= float(cloud_cover) <= 100.0
+    ):
+        raise ProviderRequestError(
+            f"Scene record '{scene_id}' has invalid cloud-cover metadata.",
+            details=[{"field": "scene_records", "reason": "cloud_cover_pct must be between 0 and 100"}],
+        )
+
+    assets = record.get("assets") or {}
+    allowed_surfaces = {"red", "nir", "blue", "green", "swir1", "swir2", "fmask"}
+    if not isinstance(assets, dict) or any(key not in allowed_surfaces for key in assets):
+        raise ProviderRequestError(
+            f"Scene record '{scene_id}' has invalid asset metadata.",
+            details=[{"field": "scene_records", "reason": "unsupported asset key"}],
+        )
+    for surface, href in assets.items():
+        try:
+            parsed = urlsplit(href) if isinstance(href, str) else None
+            valid_url = bool(
+                parsed
+                and parsed.scheme.lower() == "https"
+                and parsed.hostname
+                and parsed.hostname.lower() in {
+                    "data.lpdaac.earthdatacloud.nasa.gov",
+                    "data.lpdaac.earthdata.nasa.gov",
+                }
+                and parsed.port in (None, 443)
+                and not parsed.username
+                and not parsed.password
+                and not parsed.query
+                and not parsed.fragment
+                and (
+                    parsed.path.startswith("/lp-prod-protected/")
+                    or parsed.path.startswith("/lp-prod-public/")
+                )
+            )
+        except ValueError:
+            valid_url = False
+        if not valid_url:
+            raise ProviderRequestError(
+                f"Scene record '{scene_id}' contains an untrusted {surface} asset URL.",
+                details=[{"field": "scene_records", "reason": "asset URL must be an unsigned HTTPS LP DAAC URL"}],
+            )
 
 
 def _gdal_env_options(auth: dict[str, str]) -> dict[str, str]:
