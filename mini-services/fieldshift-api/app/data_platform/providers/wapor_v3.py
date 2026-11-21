@@ -140,12 +140,17 @@ class WaPORV3Client:
             parsed = urlsplit(download_url)
             if parsed.scheme != "https" or parsed.hostname not in RASTER_HOSTS:
                 continue
+            period_code = raster_code.split(".", 2)[-1]
+            if not re.fullmatch(r"\d{4}-\d{2}-D[1-3]", period_code):
+                continue
+            if not raster_code.startswith(f"WAPOR-3.{code}."):
+                continue
             result.append({
                 "code": raster_code,
                 "download_url": download_url,
                 "unit": item.get("unit") if isinstance(item.get("unit"), str) else None,
                 "scale_factor": item.get("scale") if isinstance(item.get("scale"), (int, float)) else None,
-                "period_code": raster_code.split(".", 2)[-1],
+                "period_code": period_code,
                 "raw_metadata": {key: item[key] for key in ("unit", "scale", "startDate", "endDate") if key in item},
             })
         return result
@@ -170,6 +175,7 @@ class WaPORV3Client:
         parsed = urlsplit(download_url) if isinstance(download_url, str) else None
         if (
             not isinstance(raster_code, str)
+            or not re.fullmatch(r"WAPOR-3\." + re.escape(code) + r"\.\d{4}-\d{2}-D[1-3]", raster_code)
             or parsed is None
             or parsed.scheme != "https"
             or parsed.hostname not in RASTER_HOSTS
