@@ -254,7 +254,7 @@ class Sentinel2StacProvider:
             )
         if isinstance(max_cloud_cover, bool) or not isinstance(max_cloud_cover, (int, float)):
             raise ProviderRequestError(
-                "Sentinel-2 maximum cloud cover must be a finite number.",
+                "Sentinel-2 maximum cloud cover must be numeric and finite.",
                 details=[{"field": "max_cloud_cover", "reason": "expected a numeric value, not a boolean or string"}],
             )
         try:
