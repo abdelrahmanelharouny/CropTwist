@@ -100,6 +100,10 @@ def test_wapor_raster_catalog_requires_exact_product_period_and_deduplicates(mon
             "code": "WAPOR-3.L2-AETI-D.2025-01-D2.extra",
             "downloadUrl": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/malformed.tif",
         },
+        {
+            "code": "WAPOR-3.L2-AETI-D.2025-13-D1",
+            "downloadUrl": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/invalid-month.tif",
+        },
     ]
     client = WaPORV3Client()
     monkeypatch.setattr(client, "_collect", lambda _: items)
