@@ -262,8 +262,36 @@ def search_scenes(
 
     base_url = settings.nasa_hls_stac_base_url.rstrip("/")
     url = f"{base_url}{STAC_SEARCH_PATH}"
-    page_size = min(max(1, int(page_size or settings.nasa_hls_search_page_size)), PAGE_SIZE_CAP)
-    max_pages = min(max(1, int(max_pages or settings.nasa_hls_max_pages)), MAX_PAGES_CAP)
+    def bounded_positive_int(value: int | None, default: int, cap: int, field: str) -> int:
+        candidate = default if value is None else value
+        if isinstance(candidate, bool) or not isinstance(candidate, int) or candidate < 1:
+            raise ProviderRequestError(
+                f"NASA HLS {field} must be a positive integer.",
+                details=[{"field": field, "reason": "positive integer required"}],
+            )
+        return min(candidate, cap)
+
+    page_size = bounded_positive_int(
+        page_size, settings.nasa_hls_search_page_size, PAGE_SIZE_CAP, "page_size"
+    )
+    max_pages = bounded_positive_int(
+        max_pages, settings.nasa_hls_max_pages, MAX_PAGES_CAP, "max_pages"
+    )
+    if max_cloud_cover is not None:
+        try:
+            valid_cloud_threshold = (
+                not isinstance(max_cloud_cover, bool)
+                and isinstance(max_cloud_cover, (int, float))
+                and math.isfinite(float(max_cloud_cover))
+                and 0.0 <= float(max_cloud_cover) <= 100.0
+            )
+        except (OverflowError, ValueError):
+            valid_cloud_threshold = False
+        if not valid_cloud_threshold:
+            raise ProviderRequestError(
+                "NASA HLS max_cloud_cover must be a finite number from 0 to 100.",
+                details=[{"field": "max_cloud_cover", "reason": "out of range or invalid type"}],
+            )
     payload: dict[str, Any] = {
         "bbox": bbox,
         "datetime": (
@@ -276,7 +304,7 @@ def search_scenes(
         payload["collections"] = list(collections)
     if max_cloud_cover is not None:
         payload["query"] = {
-            "eo:cloud_cover": {"lte": max(0.0, min(100.0, float(max_cloud_cover)))}
+            "eo:cloud_cover": {"lte": float(max_cloud_cover)}
         }
 
     http = client or httpx
