@@ -69,8 +69,8 @@ def split_group_ids(records: list[CropHistoryRecord]) -> dict[str, list[str]]:
     groups = sorted({record.farm_group_id for record in records})
     if len(groups) < 3:
         raise ValueError("at least three independent farm groups are required")
-    train_end = max(1, int(len(groups) * 0.70))
-    validation_end = max(train_end + 1, int(len(groups) * 0.85))
+    train_end = max(1, int(len(groups) * 0.60))
+    validation_end = max(train_end + 1, int(len(groups) * 0.80))
     validation_end = min(validation_end, len(groups) - 1)
     return {
         "train": groups[:train_end],
