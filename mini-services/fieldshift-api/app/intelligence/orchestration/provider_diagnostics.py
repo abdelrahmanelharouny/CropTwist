@@ -10,7 +10,7 @@ import asyncio
 from time import perf_counter
 from typing import Any
 
-from app.intelligence.orchestration.provider import provider_registry
+from app.intelligence.orchestration.provider import ProviderGeneration, provider_registry
 
 PROBE_TIMEOUT_SECONDS = 20
 
@@ -34,15 +34,35 @@ async def probe_provider(name: str) -> dict[str, Any]:
         return {"provider": provider.name, "model": getattr(provider, "model", None), "status": "not_configured"}
     started = perf_counter()
     try:
-        result = await asyncio.wait_for(
-            provider.generate(
-                [dict(message) for message in _PROBE_MESSAGES],
+        async def invoke_probe() -> Any:
+            messages = [dict(message) for message in _PROBE_MESSAGES]
+            if provider.name == "legacy-llm-bridge":
+                # This exact fixed probe is public/non-sensitive. The bridge's
+                # normal provider contract correctly defaults to sensitive;
+                # diagnostics must explicitly mark this synthetic probe as safe.
+                from app.intelligence.bridge import achat_detail
+
+                detail = await achat_detail(
+                    messages,
+                    temperature=0,
+                    max_tokens=16,
+                    field_sensitive=False,
+                )
+                if not isinstance(detail, dict) or not isinstance(detail.get("content"), str):
+                    return None
+                return ProviderGeneration(
+                    content=detail["content"],
+                    provider=provider.name,
+                    model=detail.get("model") if isinstance(detail.get("model"), str) else None,
+                )
+            return await provider.generate(
+                messages,
                 temperature=0,
                 max_tokens=16,
                 request_id="croptwist-live-provider-probe",
-            ),
-            timeout=PROBE_TIMEOUT_SECONDS,
-        )
+            )
+
+        result = await asyncio.wait_for(invoke_probe(), timeout=PROBE_TIMEOUT_SECONDS)
     except Exception as exc:
         category = getattr(exc, "category", "provider_probe_failed")
         # Never echo arbitrary exception attributes: third-party exceptions may
