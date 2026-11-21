@@ -30,3 +30,14 @@ def test_catalog_rejects_unknown_product_and_invalid_country():
 def test_catalog_collection_ids_are_unique():
     codes = [item.code for item in WAPOR_V3_PRODUCTS]
     assert len(codes) == len(set(codes))
+
+def test_ret_resolution_and_product_units_are_not_misrepresented():
+    ret = get_product("L1-RET-D")
+    aeti = get_product("L2-AETI-D")
+    rsm = get_product("L2-RSM-D")
+    assert ret.resolution_m == 30000
+    assert ret.unit == "mm/day"
+    assert aeti.resolution_m == 100
+    assert aeti.scale_factor == 0.1
+    assert rsm.unit == "%"
+    assert rsm.scale_factor == 0.001
