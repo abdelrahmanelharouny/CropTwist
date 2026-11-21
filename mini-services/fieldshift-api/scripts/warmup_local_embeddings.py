@@ -14,7 +14,7 @@ from app.intelligence.orchestration.embedding_adapters import FastEmbedE5Provide
 
 def main() -> int:
     if not ai_settings.ai_knowledge_embedding_enabled:
-        raise SystemExit("Set AI_KNOWLEDGE_EMBEDDING_ENABLED=true before warmup.")
+        raise SystemExit("Set CROPTWIST_AI_KNOWLEDGE_EMBEDDING_ENABLED=true before warmup.")
     model = FastEmbedE5Provider._load_model(
         ai_settings.ai_knowledge_embedding_model,
         ai_settings.ai_knowledge_embedding_cache_dir,
