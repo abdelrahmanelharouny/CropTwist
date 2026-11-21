@@ -331,5 +331,46 @@ def test_stac_search_rejects_invalid_cloud_cover_and_page_size():
     }
     with pytest.raises(ProviderRequestError, match="between 0 and 100"):
         provider.search_items(**args, max_cloud_cover=101)
+    with pytest.raises(ProviderRequestError, match="must be numeric"):
+        provider.search_items(**args, max_cloud_cover=True)
     with pytest.raises(ProviderRequestError, match="positive integer"):
         provider.search_items(**args, limit=0)
+
+
+def test_stac_pagination_preserves_a_configured_nonstandard_https_port(monkeypatch):
+    import httpx
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "sentinel2_stac_base_url", "https://stac.example.test:8443/api/stac/v1")
+
+    class Client:
+        def post(self, url, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"id": "scene-1"}],
+                    "links": [{
+                        "rel": "next",
+                        "href": "https://stac.example.test:8443/api/stac/v1/search?page=2",
+                        "method": "GET",
+                    }],
+                },
+                request=httpx.Request("POST", url),
+            )
+
+        def get(self, url, **kwargs):
+            assert url == "https://stac.example.test:8443/api/stac/v1/search?page=2"
+            return httpx.Response(
+                200,
+                json={"features": [{"id": "scene-2"}], "links": []},
+                request=httpx.Request("GET", url),
+            )
+
+    provider = Sentinel2StacProvider(client=Client())
+    items = provider.search_items(
+        geometry_geojson=fixture_field_geojson(),
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+    )
+    assert [item["id"] for item in items] == ["scene-1", "scene-2"]
