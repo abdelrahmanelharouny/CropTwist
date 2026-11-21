@@ -109,3 +109,26 @@ def test_encoder_rejects_non_integer_or_out_of_range_batch_sizes(bad_batch_size)
             bundle=type("Bundle", (), {"model_id": "torchgeo/presto:PRESTO"})(),
             batch_size=bad_batch_size,
         )
+
+
+
+def test_presto_valid_token_count_matches_upstream_band_groups():
+    import numpy as np
+
+    from app.intelligence.crop_history.presto import _count_valid_encoder_tokens
+
+    mask = np.ones((1, 12, 17), dtype=np.float32)
+    dynamic_world = np.full((1, 12), 9, dtype=np.int64)
+    item = {"mask": mask, "dynamic_world": dynamic_world}
+
+    assert _count_valid_encoder_tokens(item) == 0
+
+    # One S1 month, one RGB month, one NDVI month, one static SRTM token,
+    # and two non-missing Dynamic World months.
+    mask[0, 2, [0, 1]] = 0.0
+    mask[0, 4, [2, 3, 4]] = 0.0
+    mask[0, 5, 16] = 0.0
+    mask[0, 0, [14, 15]] = 0.0
+    dynamic_world[0, [1, 7]] = [2, 5]
+
+    assert _count_valid_encoder_tokens(item) == 6
