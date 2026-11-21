@@ -205,9 +205,12 @@ class WaPORV3Client:
             result.append({
                 "code": raster_code,
                 "download_url": download_url,
-                "unit": item.get("unit") if isinstance(item.get("unit"), str) else product.unit,
-                "scale_factor": item.get("scale") if isinstance(item.get("scale"), (int, float)) else product.scale_factor,
-                "offset": item.get("offset") if isinstance(item.get("offset"), (int, float)) else None,
+                # Preserve explicitly reported values, including malformed ones,
+                # so the raster reader can fail closed instead of silently replacing
+                # an invalid API claim with catalogue defaults.
+                "unit": item.get("unit") if "unit" in item else product.unit,
+                "scale_factor": item.get("scale") if "scale" in item else product.scale_factor,
+                "offset": item.get("offset") if "offset" in item else None,
                 "period_code": period_code,
                 "resolution_m": product.resolution_m,
                 "license": product.license,
@@ -286,22 +289,25 @@ class WaPORV3Client:
 
         # Ignore malformed upstream metadata and fall back only to independently
         # documented raster tags or the versioned product catalogue.
-        scale_candidates = (
-            raster.get("scale_factor"),
-            raster_metadata.get("scale_factor"),
-            product.scale_factor,
+        scale_candidates = (raster.get("scale_factor"), raster_metadata.get("scale_factor"))
+        present_scales = [value for value in scale_candidates if value is not None]
+        valid_scales = [
+            float(value) for value in present_scales
+            if finite_number(value) and float(value) > 0
+        ]
+        scales_consistent = (
+            len(valid_scales) == len(present_scales)
+            and all(
+                math.isclose(value, product.scale_factor, rel_tol=1e-9, abs_tol=1e-12)
+                for value in valid_scales
+            )
         )
-        reported_scale = next(
-            (float(value) for value in scale_candidates if finite_number(value) and float(value) > 0),
-            None,
-        )
-        # The versioned product specification is the canonical authority.
-        # Upstream raster metadata is useful for corroboration, but a conflicting
-        # scale must never silently redefine the physical value.
+        # Every available API/GeoTIFF scale must agree with the versioned
+        # product specification. A valid first value cannot mask a conflict
+        # in a second metadata source.
         scale = (
             product.scale_factor
-            if product.scale_factor is not None
-            and (reported_scale is None or math.isclose(reported_scale, product.scale_factor, rel_tol=1e-9, abs_tol=1e-12))
+            if product.scale_factor is not None and scales_consistent
             else None
         )
         offset_candidates = (raster.get("offset"), raster_metadata.get("offset"))
@@ -318,25 +324,22 @@ class WaPORV3Client:
             else None
         )
         unit_candidates = (raster.get("unit"), raster_metadata.get("unit"))
-        reported_unit = next(
-            (
-                value.strip()
-                for value in unit_candidates
-                if isinstance(value, str)
-                and value.strip()
-                and value.strip().casefold() not in {"1", "unitless", "unknown"}
-            ),
-            None,
+        present_units = [value for value in unit_candidates if value is not None]
+        meaningful_units = [
+            value.strip()
+            for value in present_units
+            if isinstance(value, str)
+            and value.strip()
+            and value.strip().casefold() not in {"1", "unitless", "unknown"}
+        ]
+        invalid_unit_metadata = any(not isinstance(value, str) for value in present_units)
+        units_consistent = (
+            not invalid_unit_metadata
+            and all(value.casefold() == (product.unit or "").casefold() for value in meaningful_units)
         )
-        # Do not let a conflicting API/GeoTIFF unit leak into canonical data.
-        # If metadata disagrees with the product specification, keep raw
-        # statistics and withhold scaled values instead of guessing a conversion.
-        unit = (
-            product.unit
-            if product.unit is not None
-            and (reported_unit is None or reported_unit.casefold() == product.unit.casefold())
-            else None
-        )
+        # Check all metadata sources, not just the first non-empty unit. A
+        # malformed or conflicting unit withholds canonical scaled values.
+        unit = product.unit if product.unit is not None and units_consistent else None
         scaled_mean = mean * scale + offset if mean is not None and scale is not None and offset is not None and unit is not None else None
         scaled_median = median * scale + offset if median is not None and scale is not None and offset is not None and unit is not None else None
         return WaPORRasterWindow(
