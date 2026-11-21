@@ -28,7 +28,7 @@ class FastEmbedMultilingualMiniLMProvider:
             raise RuntimeError("FastEmbed is not installed") from exc
         return TextEmbedding(model_name=model_name, cache_dir=cache_dir or None, threads=threads)
 
-    def _encode(self, texts: list[str], *, prefix: str) -> list[list[float]]:
+    def _encode(self, texts: list[str]) -> list[list[float]]:
         if not ai_settings.ai_knowledge_embedding_enabled:
             raise RuntimeError("local knowledge embeddings are disabled by configuration")
         if not texts or len(texts) > 32:
@@ -36,7 +36,7 @@ class FastEmbedMultilingualMiniLMProvider:
         if any(not isinstance(text, str) or not text.strip() or len(text) > 16000 for text in texts):
             raise ValueError("embedding input is outside the supported bound")
         model = self._load_model(self.model, ai_settings.ai_knowledge_embedding_cache_dir, self._threads)
-        vectors = model.embed([prefix + text.strip() for text in texts])
+        vectors = model.embed([text.strip() for text in texts])
         result: list[list[float]] = []
         for vector in vectors:
             values = vector.tolist() if hasattr(vector, "tolist") else list(vector)
@@ -46,10 +46,10 @@ class FastEmbedMultilingualMiniLMProvider:
         return result
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        return await asyncio.to_thread(self._encode, texts, prefix="")
+        return await asyncio.to_thread(self._encode, texts)
 
     async def embed_query(self, text: str) -> list[float]:
-        vectors = await asyncio.to_thread(self._encode, [text], prefix="")
+        vectors = await asyncio.to_thread(self._encode, [text])
         return vectors[0]
 
 
