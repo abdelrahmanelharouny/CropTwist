@@ -46,3 +46,50 @@ def model_card() -> dict[str, str]:
         "intended_use": "remote-sensing time-series representation learning",
         "warning": "Pretrained embeddings are not Egyptian crop labels or calibrated crop probabilities.",
     }
+
+def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size: int = 32) -> list[list[float]]:
+    """Generate pretrained 128-D pixel/field embeddings without training a head.
+
+    This function intentionally returns embeddings only. It does not map them
+    to crop classes or probabilities; that requires an independently labelled
+    Egyptian training/evaluation set and a separately versioned classifier.
+    """
+    if not records or len(records) > 4096 or not 1 <= batch_size <= 128:
+        raise ValueError("Presto inference batch is outside the supported bound")
+    try:
+        import numpy as np
+        import torch
+    except ImportError as exc:
+        raise RuntimeError("PyTorch is required in the optional ML worker") from exc
+    from app.intelligence.crop_history.presto_inputs import build_presto_input
+
+    prepared = [build_presto_input(record) for record in records]
+    outputs: list[list[float]] = []
+    device = next(bundle.encoder.parameters()).device
+    for start in range(0, len(prepared), batch_size):
+        batch = prepared[start : start + batch_size]
+        x = torch.from_numpy(np.concatenate([item["x"] for item in batch], axis=0)).to(device)
+        mask = torch.from_numpy(np.concatenate([item["mask"] for item in batch], axis=0)).to(device)
+        dynamic_world = torch.from_numpy(
+            np.concatenate([item["dynamic_world"] for item in batch], axis=0)
+        ).long().to(device)
+        latlons = torch.from_numpy(
+            np.concatenate([item["latlons"] for item in batch], axis=0)
+        ).to(device)
+        months = torch.tensor([item["month"] for item in batch], dtype=torch.long, device=device)
+        with torch.inference_mode():
+            embeddings = bundle.encoder(
+                x=x,
+                dynamic_world=dynamic_world,
+                latlons=latlons,
+                mask=mask,
+                month=months,
+                eval_task=True,
+            )
+        if embeddings.ndim != 2 or embeddings.shape[0] != len(batch):
+            raise RuntimeError("Presto encoder returned an invalid embedding shape")
+        values = embeddings.detach().cpu().float().numpy()
+        if not np.isfinite(values).all():
+            raise RuntimeError("Presto encoder returned non-finite embeddings")
+        outputs.extend(values.tolist())
+    return outputs
