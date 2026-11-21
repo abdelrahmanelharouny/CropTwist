@@ -44,3 +44,18 @@ def test_probe_reports_not_configured_without_network(monkeypatch):
         configured = False
     monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Disabled())
     assert asyncio.run(provider_diagnostics.probe_provider("disabled"))["status"] == "not_configured"
+
+def test_probe_never_exposes_provider_exception_body(monkeypatch):
+    class Broken:
+        name = "broken"
+        model = "model"
+        configured = True
+
+        async def generate(self, messages, **kwargs):
+            raise RuntimeError("secret-token-should-never-escape")
+
+    monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Broken())
+    result = asyncio.run(provider_diagnostics.probe_provider("broken"))
+    assert result["status"] == "failed"
+    assert "secret-token-should-never-escape" not in str(result)
+    assert result["error_category"] == "provider_probe_failed"
