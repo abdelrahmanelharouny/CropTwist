@@ -112,7 +112,10 @@ def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size:
 
     outputs: list[list[float] | None] = [None] * len(prepared)
     device = next(bundle.encoder.parameters()).device
-    for indices in buckets.values():
+    # The upstream eval_task=True path averages only unmasked tokens, then
+    # applies the encoder LayerNorm. TorchGeo compacts masked tokens, so the
+    # bucket size must equal its returned token count minus the lat/lon token.
+    for expected_valid_tokens, indices in buckets.items():
         for start in range(0, len(indices), batch_size):
             batch_indices = indices[start : start + batch_size]
             batch = [prepared[index] for index in batch_indices]
@@ -133,6 +136,10 @@ def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size:
                     mask=mask,
                     month=months,
                 )
+                if tokens.ndim != 3 or tokens.shape[1] != expected_valid_tokens + 1:
+                    raise RuntimeError(
+                        "Presto valid-token count does not match the input mask; refusing to pool padded or miscounted tokens"
+                    )
                 embeddings = bundle.pool_norm(tokens.mean(dim=1))
             if embeddings.ndim != 2 or embeddings.shape[0] != len(batch) or embeddings.shape[1] != 128:
                 raise RuntimeError("Presto encoder returned an invalid embedding shape")
