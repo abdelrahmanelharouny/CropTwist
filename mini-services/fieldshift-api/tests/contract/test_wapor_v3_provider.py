@@ -125,3 +125,25 @@ def test_field_window_masks_outside_field_and_preserves_raw_units(monkeypatch):
     assert result.scaled_median == pytest.approx(0.2)
     assert result.metadata_reference == "https://example.org/spec"
     assert np.isnan(result.array[0, 1])
+
+def test_field_window_refuses_non_tiled_asset(monkeypatch):
+    monkeypatch.setattr(
+        wapor_v3,
+        "get_product",
+        lambda code: type("Product", (), {"resolution_m": 100, "unit": "mm/day", "scale_factor": 0.1, "metadata_reference": "https://example.org/spec"})(),
+    )
+    monkeypatch.setattr(
+        wapor_v3,
+        "_read_raster_metadata",
+        lambda url: {"unit": None, "scale_factor": None, "offset": None, "nodata": None, "is_tiled": False},
+    )
+    client = wapor_v3.WaPORV3Client()
+    with pytest.raises(wapor_v3.WaPORProviderError, match="not tiled"):
+        client.read_field_window(
+            mapset_code="L2-T-D",
+            raster={
+                "code": "WAPOR-3.L2-T-D.2025-01-D1",
+                "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
+            },
+            geometry_geojson={"type": "Polygon", "coordinates": []},
+        )
