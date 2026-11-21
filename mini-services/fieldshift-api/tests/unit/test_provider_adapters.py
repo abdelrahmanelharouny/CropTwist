@@ -16,6 +16,7 @@ from app.intelligence.orchestration.provider import (
 from app.intelligence.orchestration.provider_adapters import (
     GeminiProvider,
     GroqProvider,
+    OllamaProvider,
     OpenRouterProvider,
     ProviderFailoverChain,
     ProviderFailure,
@@ -201,10 +202,12 @@ def test_failover_never_splices_after_provider_stream_emits_text():
 
 def test_provider_status_reports_unverified_configuration_without_secrets():
     statuses = get_provider_statuses()
-    assert [row["name"] for row in statuses[:3]] == ["gemini", "groq", "openrouter"]
-    assert statuses[0]["model"] == "gemini-3.6-flash"
-    assert statuses[1]["model"] == "openai/gpt-oss-120b"
-    assert statuses[2]["model"] == "nvidia/nemotron-3.5-super-vl:free"
+    assert [row["name"] for row in statuses[:4]] == ["ollama", "gemini", "groq", "openrouter"]
+    assert statuses[0]["model"] == "qwen3:4b-instruct-2507-q4_K_M"
+    assert statuses[0]["status"] == "missing_credentials_or_disabled"
+    assert statuses[1]["model"] == "gemini-3.6-flash"
+    assert statuses[2]["model"] == "openai/gpt-oss-120b"
+    assert statuses[3]["model"] == "nvidia/nemotron-3.5-super-vl:free"
     serialized = json.dumps(statuses)
     assert "unit-test-key" not in serialized
     assert "api_key" not in serialized
@@ -229,3 +232,88 @@ def test_legacy_bridge_sensitive_data_policy_does_not_depend_on_endpoint_host(mo
     monkeypatch.setattr(ai_settings, "llm_bridge_url", "https://bridge.internal.example")
     remote_allowed = provider_adapters._allowed_for_sensitive_data("legacy-llm-bridge")
     assert loopback_allowed is remote_allowed is False
+
+
+def test_ollama_local_chat_payload_and_usage_are_normalized(monkeypatch):
+    observed = {}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        observed["url"] = str(request.url)
+        observed["headers"] = dict(request.headers)
+        observed["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "model": "qwen3:4b-instruct-2507-q4_K_M",
+            "message": {"role": "assistant", "content": "Local answer."},
+            "done": True,
+            "prompt_eval_count": 23,
+            "eval_count": 5,
+        })
+
+    monkeypatch.setattr(ai_settings, "llm_enabled", True)
+    monkeypatch.setattr(ai_settings, "ollama_enabled", True)
+    provider = OllamaProvider(
+        base_url="http://127.0.0.1:11434",
+        num_ctx=8192,
+        keep_alive="5m",
+        **_provider_kwargs(httpx.MockTransport(handle)),
+    )
+    result = asyncio.run(provider.generate(
+        [{"role": "user", "content": "Explain this synthetic field scenario."}],
+        temperature=0,
+        max_tokens=128,
+        request_id="local-qwen-test",
+    ))
+    assert result is not None
+    assert result.provider == "ollama"
+    assert result.input_tokens == 23 and result.output_tokens == 5
+    assert observed["url"] == "http://127.0.0.1:11434/api/chat"
+    assert "authorization" not in observed["headers"]
+    assert observed["body"]["stream"] is False
+    assert observed["body"]["options"]["num_ctx"] == 8192
+    assert observed["body"]["options"]["num_predict"] == 128
+    assert observed["body"]["keep_alive"] == "5m"
+
+
+def test_ollama_native_json_schema_is_passed_and_validated(monkeypatch):
+    captured = {}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "model": "qwen3:4b-instruct-2507-q4_K_M",
+            "message": {"role": "assistant", "content": '{"answer":"grounded"}'},
+            "done": True,
+            "prompt_eval_count": 12,
+            "eval_count": 4,
+        })
+
+    monkeypatch.setattr(ai_settings, "llm_enabled", True)
+    monkeypatch.setattr(ai_settings, "ollama_enabled", True)
+    provider = OllamaProvider(
+        base_url="http://127.0.0.1:11434",
+        num_ctx=8192,
+        keep_alive="5m",
+        **_provider_kwargs(httpx.MockTransport(handle)),
+    )
+    schema = {"type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"]}
+    result = asyncio.run(provider.generate_structured(
+        [{"role": "user", "content": "Return JSON."}],
+        schema=schema,
+        temperature=0,
+        max_tokens=128,
+    ))
+    assert result is not None
+    assert captured["body"]["format"] == schema
+    assert result.content == '{"answer":"grounded"}'
+
+
+def test_only_enabled_loopback_ollama_is_privacy_eligible(monkeypatch):
+    monkeypatch.setattr(ai_settings, "ollama_enabled", True)
+    monkeypatch.setattr(ai_settings, "ollama_base_url", "http://127.0.0.1:11434")
+    monkeypatch.setattr(ai_settings, "ai_allow_field_data_to_providers", False)
+    assert provider_adapters._allowed_for_sensitive_data("ollama") is True
+    assert provider_adapters._allowed_for_sensitive_data("gemini") is False
+    assert provider_adapters._allowed_for_sensitive_data("legacy-llm-bridge") is False
+
+    monkeypatch.setattr(ai_settings, "ollama_enabled", False)
+    assert provider_adapters._allowed_for_sensitive_data("ollama") is False
