@@ -912,6 +912,7 @@ class OllamaProvider(_HTTPProvider):
         keep_alive: str,
         **kwargs: Any,
     ) -> None:
+        kwargs.pop("api_key", None)
         super().__init__(api_key="", **kwargs)
         self.base_url = base_url.rstrip("/") + "/api/chat"
         self.num_ctx = num_ctx
