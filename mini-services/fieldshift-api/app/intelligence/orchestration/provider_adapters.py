@@ -16,7 +16,6 @@ import time
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, AsyncIterator, Callable
-from urllib.parse import urlparse
 
 import httpx
 
@@ -1690,14 +1689,12 @@ def register_default_providers(registry: ProviderRegistry) -> None:
     ))
 
 
-def _legacy_bridge_is_local() -> bool:
-    host = (urlparse(ai_settings.llm_bridge_url).hostname or "").casefold()
-    return host in {"localhost", "127.0.0.1", "::1"}
-
-
 def _allowed_for_sensitive_data(name: str) -> bool:
+    # A loopback HTTP hop is not proof of local inference. The legacy Bun
+    # bridge delegates to an SDK whose upstream completion endpoint is configured
+    # outside this HTTP hop; loopback does not prove local prompt processing.
     if name == "legacy-llm-bridge":
-        return _legacy_bridge_is_local() or ai_settings.ai_allow_field_data_to_providers
+        return ai_settings.ai_allow_field_data_to_providers
     if not ai_settings.ai_allow_field_data_to_providers:
         return False
     if name == "openrouter" and not ai_settings.openrouter_allow_field_data:

@@ -87,6 +87,19 @@ def _backoff_delay(attempt: int) -> float:
     return min(0.25 * (2 ** max(0, attempt - 1)), 2.0)
 
 
+def _field_data_policy_allows(field_sensitive: bool) -> bool:
+    """Fail closed before any bridge I/O for sensitive prompts.
+
+    The Bun bridge delegates to an upstream SDK endpoint; loopback transport is not proof of local inference.
+    """
+    if not field_sensitive:
+        return True
+    if ai_settings.ai_allow_field_data_to_providers:
+        return True
+    logger.warning("LLM bridge blocked for field-sensitive data by privacy policy.")
+    return False
+
+
 def _validate_body(body: dict[str, Any]) -> dict[str, Any] | None:
     content = body.get("content")
     if not isinstance(content, str) or not content.strip():
@@ -146,9 +159,15 @@ async def _apost(
 
 
 async def achat_detail(
-    messages: list[dict[str, str]], temperature: float | None = None, max_tokens: int | None = None
+    messages: list[dict[str, str]],
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    *,
+    field_sensitive: bool = True,
 ) -> dict[str, Any] | None:
-    """Async chat with the bridge; {"content", "model"?} or None (never raises)."""
+    """Async chat with the bridge; sensitive data is blocked unless approved."""
+    if not _field_data_policy_allows(field_sensitive):
+        return None
     if not ai_settings.llm_enabled:
         logger.info("LLM bridge disabled by configuration — rules-only mode.")
         return None
@@ -250,9 +269,15 @@ def _post(url: str, payload: dict[str, Any], timeout: float) -> tuple[dict[str, 
 
 
 def chat_detail(
-    messages: list[dict[str, str]], temperature: float | None = None, max_tokens: int | None = None
+    messages: list[dict[str, str]],
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    *,
+    field_sensitive: bool = True,
 ) -> dict[str, Any] | None:
-    """Sync chat with the bridge; {"content", "model"?} or None (never raises)."""
+    """Sync chat with the bridge; sensitive data is blocked unless approved."""
+    if not _field_data_policy_allows(field_sensitive):
+        return None
     if not ai_settings.llm_enabled:
         logger.info("LLM bridge disabled by configuration — rules-only mode.")
         return None
@@ -293,11 +318,16 @@ def chat_detail(
     return _validate_body(body)
 
 
-def chat(messages: list[dict[str, str]], temperature: float | None = None) -> str | None:
+def chat(
+    messages: list[dict[str, str]],
+    temperature: float | None = None,
+    *,
+    field_sensitive: bool = True,
+) -> str | None:
     """Bridge chat returning the assistant text, or None on ANY failure.
 
     This is the module's public sync contract; `chat_detail` additionally
     exposes the bridge-reported model name for provenance fields.
     """
-    detail = chat_detail(messages, temperature=temperature)
+    detail = chat_detail(messages, temperature=temperature, field_sensitive=field_sensitive)
     return detail["content"] if detail else None

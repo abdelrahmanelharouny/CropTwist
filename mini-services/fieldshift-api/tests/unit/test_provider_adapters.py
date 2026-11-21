@@ -21,6 +21,8 @@ from app.intelligence.orchestration.provider_adapters import (
     ProviderFailure,
     get_provider_statuses,
 )
+from app.intelligence.config import ai_settings
+from app.intelligence.orchestration import provider_adapters
 
 
 def _provider_kwargs(transport: httpx.AsyncBaseTransport) -> dict[str, Any]:
@@ -206,3 +208,24 @@ def test_provider_status_reports_unverified_configuration_without_secrets():
     serialized = json.dumps(statuses)
     assert "unit-test-key" not in serialized
     assert "api_key" not in serialized
+
+
+def test_legacy_bridge_loopback_is_not_proof_of_local_inference(monkeypatch):
+    monkeypatch.setattr(ai_settings, "llm_bridge_url", "http://127.0.0.1:3035")
+    monkeypatch.setattr(ai_settings, "ai_allow_field_data_to_providers", False)
+    assert provider_adapters._allowed_for_sensitive_data("legacy-llm-bridge") is False
+
+    # The bridge is eligible only after explicit operator approval, regardless
+    # of whether its HTTP endpoint is loopback or a remote service.
+    monkeypatch.setattr(ai_settings, "ai_allow_field_data_to_providers", True)
+    assert provider_adapters._allowed_for_sensitive_data("legacy-llm-bridge") is True
+
+
+def test_legacy_bridge_sensitive_data_policy_does_not_depend_on_endpoint_host(monkeypatch):
+    monkeypatch.setattr(ai_settings, "llm_bridge_url", "http://127.0.0.1:3035")
+    monkeypatch.setattr(ai_settings, "ai_allow_field_data_to_providers", False)
+    loopback_allowed = provider_adapters._allowed_for_sensitive_data("legacy-llm-bridge")
+
+    monkeypatch.setattr(ai_settings, "llm_bridge_url", "https://bridge.internal.example")
+    remote_allowed = provider_adapters._allowed_for_sensitive_data("legacy-llm-bridge")
+    assert loopback_allowed is remote_allowed is False
