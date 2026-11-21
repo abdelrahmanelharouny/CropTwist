@@ -56,6 +56,13 @@ async def probe_provider(name: str) -> dict[str, Any]:
     latency_ms = max(0, round((perf_counter() - started) * 1000))
     if result is None or not isinstance(getattr(result, "content", None), str) or not result.content.strip():
         return {"provider": provider.name, "model": getattr(provider, "model", None), "status": "empty_response", "latency_ms": latency_ms}
+    if result.content.strip() != "CROPTWIST_PROVIDER_OK":
+        return {
+            "provider": provider.name,
+            "model": getattr(result, "model", None) or getattr(provider, "model", None),
+            "status": "unexpected_response",
+            "latency_ms": latency_ms,
+        }
     return {
         "provider": provider.name,
         "model": getattr(result, "model", None) or getattr(provider, "model", None),
