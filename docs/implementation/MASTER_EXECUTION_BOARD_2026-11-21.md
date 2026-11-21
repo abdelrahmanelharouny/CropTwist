@@ -1,7 +1,7 @@
 # CropTwist — Master Execution Board
 
 **Snapshot:** 2026-11-21  
-**Repository baseline:** `main` at `58110363da7da701339dbae11fcc81ba9413a609`  
+**Repository baseline:** latest verified merge on `main` is `9e82c5a55041a812a8457bda0e23b529c897f1d1` (M1-A + AI privacy fix merged after the prior baseline)  
 **Purpose:** one cross-phase execution view. This board supplements historical milestone reports; it does not turn source presence into a verified release claim.
 
 ## Operating rules
@@ -17,7 +17,7 @@
 | Area | Current status | Remaining acceptance gate |
 |---|---|---|
 | M0 — architecture/contracts | Existing architecture and ADRs are in place | Keep module boundaries and evidence contracts intact as new work lands |
-| M1 — data + AI integration | Active Draft PRs #5, #11–14, #17–18 | Fix exact-head CI; complete E5 RAG contract; prove Presto label provenance; live provider probes remain external gates |
+| M1 — data + AI integration | M1-A (#5) merged; privacy fix (#17) merged; #11–14 and #18 remain separate | Complete Presto runtime parity; judged E5 retrieval benchmark; live satellite/WaPOR/provider checks remain explicit gates |
 | M2 — clean-room release | Not accepted for a fresh release | Rebuild from current `main` + reviewed PRs in disposable PostGIS; run migrations twice + drift check; full tests; browser smoke; worker/report lifecycle; record exact SHA |
 | M3 — geospatial/features | Existing M3 implementation; M1 satellite acquisition hardening remains open | Projected-CRS window tests, Fmask propagation, bounded reads, provider provenance and live acquisition |
 | M4 — knowledge/evidence | Existing knowledge services; scientific audit findings remain | Version-conflict, regional-trait calculation/citation parity, evidence completeness and unit-safe numeric validation |
@@ -31,17 +31,18 @@
 ## Active parallel workstreams
 
 ### Lane A — CI and integration recovery
-- PR #5: Sentinel-2 contract wording regression fixed; rerun exact-head CI.
-- PR #11: Presto validation error wording aligned with its regression contract; rerun exact-head CI.
-- PR #12: CI passed on the recorded head, but implementation still uses MiniLM rather than the selected multilingual E5 model/prefix contract. Do not merge.
-- PR #13: WaPOR canonical period/read validation and stale test expectations corrected; rerun exact-head CI.
-- PR #14: provider diagnostics CI passed on its recorded head; live connectivity still unverified.
-- PR #17/#18: synthetic bridge tests now explicitly opt in to mocked non-sensitive requests; preserve fail-closed production defaults and rerun both stacked branches.
+- PR #5: merged as `aa56505`; exact-head backend and frontend CI both passed. Live CDSE/HLS acquisition remains unverified.
+- PR #11: current head `c5306c8`; frontend CI passed, backend pytest is running after two validation-message-only fixes. Keep Draft until backend finishes; numerical parity with upstream pretrained Presto is still a separate gate.
+- PR #12: exact-head CI passed. It now implements pinned multilingual E5 (not MiniLM), SHA-256 verification and task prefixes; real warmup plus an agronomist-judged Arabic/English retrieval benchmark remain required.
+- PR #13: exact-head CI passed. WaPOR live FAO raster smoke and live L2-RSM-D availability remain unverified.
+- PR #14: exact-head CI passed. Gemini/Groq/OpenRouter credentials and authenticated connectivity probes remain unverified.
+- PR #17: merged as `9e82c5a`; sensitive prompts are blocked from the legacy bridge unless the explicit external-provider approval gate is enabled.
+- PR #18: exact-head CI passed, but remains stacked on the old PR #17 branch. Rebase/retarget after the squash merge before considering merge; local Qwen model/runtime quality and latency are unverified.
 
 ### Lane B — AI, privacy and evidence
-- Finish multilingual E5 model registration, immutable revision/hash verification, query/passsage prefixes, and Arabic/English agricultural retrieval evaluation.
-- Verify Presto feature schema, labels/licensing, spatial/temporal splits, and model evaluation; no trained crop classifier claim until this exists.
-- Keep local Qwen opt-in and loopback-only; hosted providers must not receive sensitive farmer data without explicit approval.
+- E5 implementation is present on PR #12 with immutable revision/hash verification and `passage:`/`query:` prefixes. Still run actual model warmup and a reviewed bilingual agricultural corpus benchmark before enabling semantic retrieval.
+- Presto implementation is present on PR #11; verify pretrained-weight numerical parity with upstream `eval_task=True`, then source verified Egypt labels/licensing and run spatial/temporal evaluation. No crop classifier claim until all gates pass.
+- Keep local Qwen opt-in and loopback-only; PR #17 now blocks sensitive legacy-bridge prompts unless explicit external-provider approval is enabled.
 - Extend evidence-bound numeric/citation validation to every user-visible AI narrative.
 
 ### Lane C — P2/P3 product correctness
@@ -67,6 +68,22 @@
 - Notification email is an adapter seam until a delivery provider is configured and tested.
 - M7.8 remains blocked until a compatible real forecast/projection provider is available.
 - Railway/Vercel historical deployment records are not a live health check.
+
+## Latest verified integration snapshot (2026-11-21)
+
+| PR | Exact head / result | Current decision |
+|---|---|---|
+| #5 M1-A | `b3487981` — backend + frontend CI passed; merged as `aa56505` | Integrated; live satellite credentials/smoke still required |
+| #11 M1-B Presto | `c5306c8b` — frontend passed; backend CI run #645 in progress | Hold Draft until backend is green and upstream pretrained-weight parity is demonstrated |
+| #12 M1-C local E5 RAG | `531f30e5` — backend + frontend CI passed | Keep disabled pending warmup, reviewed corpus, bilingual retrieval metrics and host resource benchmark |
+| #13 M1-D WaPOR | `01c755b6` — backend + frontend CI passed | Keep live-data claims blocked pending FAO raster smoke and L2-RSM-D verification |
+| #14 M1-E provider diagnostics | `d1adf97c` — backend + frontend CI passed | Diagnostic code integrated only after merge; no provider is live-verified by mocked CI |
+| #17 legacy bridge privacy | `42aab384` — backend + frontend CI passed; merged as `9e82c5a` | Integrated; sensitive legacy-bridge traffic is fail-closed without explicit approval |
+| #18 local Qwen | `402cc65e` — backend + frontend CI passed | Stacked base still references pre-squash #17 branch; rebase/retarget required before merge |
+| #22 interval-valued soil scoring | `7dfe17a7` — backend + frontend CI passed | P2 review candidate; conservative bounds, no invented midpoint |
+| #23 analytics entitlement | `fb0432fd` — backend + frontend CI passed | P3 review candidate; server-side plan gate, no production mutation |
+
+The GitHub workflow-run listing used for this snapshot exposes PR-triggered runs only; it does not establish the status of the post-merge `main` push workflow. Verify the resulting `main` CI separately before any release. PRs #11–14 still target the earlier `e32d0c3` base; re-check mergeability and exact-head CI after each sequential merge. PRs #22–23 target the pre-M1-A `5811036` baseline and also require post-merge integration review.
 
 ## Definition of done
 
