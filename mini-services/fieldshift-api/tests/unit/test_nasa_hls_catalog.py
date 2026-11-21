@@ -166,3 +166,45 @@ def test_search_scenes_requires_convertible_geometry():
     end = datetime(2024, 6, 10, tzinfo=UTC)
     with pytest.raises(ProviderRequestError):
         catalog.search_scenes(geometry_geojson={}, start=start, end=end)
+
+@pytest.mark.parametrize("field,value", [
+    ("page_size", True),
+    ("page_size", 2.5),
+    ("page_size", 0),
+    ("max_pages", "3"),
+    ("max_pages", False),
+    ("max_pages", -1),
+])
+def test_search_scenes_rejects_invalid_pagination_limits(field, value):
+    start = datetime(2024, 6, 1, tzinfo=UTC)
+    end = datetime(2024, 6, 10, tzinfo=UTC)
+    kwargs = {field: value}
+    with pytest.raises(ProviderRequestError, match="positive integer"):
+        catalog.search_scenes(
+            geometry_geojson=L30_ITEM["geometry"],
+            start=start,
+            end=end,
+            **kwargs,
+        )
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf"), -1, 101, "80"])
+def test_search_scenes_rejects_invalid_cloud_cover_threshold(value):
+    start = datetime(2024, 6, 1, tzinfo=UTC)
+    end = datetime(2024, 6, 10, tzinfo=UTC)
+    with pytest.raises(ProviderRequestError, match="max_cloud_cover"):
+        catalog.search_scenes(
+            geometry_geojson=L30_ITEM["geometry"],
+            start=start,
+            end=end,
+            max_cloud_cover=value,
+        )
+
+
+def test_parse_item_ignores_boolean_and_out_of_range_cloud_cover():
+    for value in (True, float("nan"), 101):
+        item = {**L30_ITEM, "properties": {**L30_ITEM["properties"], "eo:cloud_cover": value}}
+        record, warnings = catalog.parse_stac_item(item)
+        assert record is not None
+        assert record.cloud_cover_pct is None
+        assert any("cloud cover ignored" in warning for warning in warnings)
