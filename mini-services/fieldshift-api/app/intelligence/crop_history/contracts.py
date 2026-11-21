@@ -56,12 +56,17 @@ class CropHistoryRecord(BaseModel):
     farm_group_id: str = Field(min_length=1, max_length=80)
     country_code: str = Field(min_length=2, max_length=3)
     geometry_hash: str = Field(min_length=16, max_length=128)
+    region_id: str | None = Field(default=None, min_length=1, max_length=80)
+    valid_pixel_coverage: float | None = Field(default=None, ge=0, le=1)
     centroid_lat: float | None = Field(default=None, ge=-90, le=90)
     centroid_lon: float | None = Field(default=None, ge=-180, le=180)
     season_start: date
     season_end: date
     label_crop_code: str | None = Field(default=None, max_length=40)
     label_source: Literal["verified_farmer_record", "official_statistics", "curated_reference"] | None = None
+    label_source_verified: bool = False
+    label_license: str | None = Field(default=None, min_length=1, max_length=120)
+    label_license_verified: bool = False
     label_confidence: float | None = Field(default=None, ge=0, le=1)
     months: list[MonthlyCropFeatures] = Field(min_length=1, max_length=36)
 
@@ -73,8 +78,19 @@ class CropHistoryRecord(BaseModel):
             raise ValueError("field centroid latitude and longitude must be supplied together")
         if (self.label_crop_code is None) != (self.label_source is None):
             raise ValueError("crop label and its source must be supplied together")
-        if self.label_crop_code is None and self.label_confidence is not None:
-            raise ValueError("unlabelled records cannot carry label confidence")
+        if self.label_crop_code is None and (
+            self.label_confidence is not None
+            or self.label_license is not None
+            or self.label_source_verified
+            or self.label_license_verified
+        ):
+            raise ValueError("unlabelled records cannot carry label provenance or confidence")
+        if self.label_crop_code is not None and (
+            not self.label_source_verified
+            or not self.label_license
+            or not self.label_license_verified
+        ):
+            raise ValueError("labelled records require verified source and license metadata")
         keys = [(item.year, item.month) for item in self.months]
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate monthly observations are not allowed")
