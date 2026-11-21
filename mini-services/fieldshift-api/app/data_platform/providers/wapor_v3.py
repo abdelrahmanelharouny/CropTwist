@@ -189,18 +189,25 @@ class WaPORV3Client:
         product = get_product(code)
         items = self._collect(f"{API_ROOT}/{code}/rasters")
         result: list[dict[str, Any]] = []
+        seen_raster_codes: set[str] = set()
+        expected_prefix = f"WAPOR-3.{code}."
         for item in items:
             raster_code = item.get("code")
             download_url = item.get("downloadUrl")
             if not isinstance(raster_code, str) or not isinstance(download_url, str):
                 continue
+            # Require an exact product + period identifier. Prefix-only checks
+            # can admit malformed suffixes and duplicate periods from the API.
+            if not raster_code.startswith(expected_prefix):
+                continue
+            period_code = raster_code[len(expected_prefix):]
+            if not re.fullmatch(r"\\d{4}-\\d{2}-D[1-3]", period_code):
+                continue
+            if raster_code in seen_raster_codes:
+                raise WaPORProviderError("FAO API returned a duplicate raster identifier")
+            seen_raster_codes.add(raster_code)
             parsed = urlsplit(download_url)
             if parsed.scheme != "https" or parsed.hostname not in RASTER_HOSTS or parsed.port not in (None, 443) or parsed.username or parsed.password:
-                continue
-            period_code = raster_code.split(".", 2)[-1]
-            if not re.fullmatch(r"\d{4}-\d{2}-D[1-3]", period_code):
-                continue
-            if not raster_code.startswith(f"WAPOR-3.{code}."):
                 continue
             result.append({
                 "code": raster_code,
