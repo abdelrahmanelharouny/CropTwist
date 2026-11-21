@@ -21,6 +21,8 @@ class MonthlyCropFeatures(BaseModel):
     year: int = Field(ge=2000, le=2100)
     values: dict[FeatureName, float | None]
     valid_observation_count: int = Field(ge=0, le=10000)
+    presto_bands: dict[str, float | None] = Field(default_factory=dict)
+    dynamic_world_class: int | None = Field(default=None, ge=0, le=8)
     source_scene_ids: list[str] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
@@ -39,6 +41,8 @@ class CropHistoryRecord(BaseModel):
     farm_group_id: str = Field(min_length=1, max_length=80)
     country_code: str = Field(min_length=2, max_length=3)
     geometry_hash: str = Field(min_length=16, max_length=128)
+    centroid_lat: float | None = Field(default=None, ge=-90, le=90)
+    centroid_lon: float | None = Field(default=None, ge=-180, le=180)
     season_start: date
     season_end: date
     label_crop_code: str | None = Field(default=None, max_length=40)
