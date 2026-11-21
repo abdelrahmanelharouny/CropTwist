@@ -7,6 +7,7 @@ mask; zero is never used as an unmarked substitute for missing data.
 from __future__ import annotations
 
 from datetime import date
+import math
 from typing import Any
 
 import numpy as np
@@ -39,13 +40,27 @@ def _month_sequence(start: date, count: int = 12) -> list[tuple[int, int]]:
 
 def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
     """Return one 12-month Presto batch, masks, Dynamic World and lat/lon."""
-    if record.centroid_lat is None or record.centroid_lon is None:
-        raise ValueError("Presto input requires a verified field centroid")
+    for name, value, lower, upper in (
+        ("centroid_lat", record.centroid_lat, -90.0, 90.0),
+        ("centroid_lon", record.centroid_lon, -180.0, 180.0),
+    ):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"Presto input requires a finite verified field {name}")
+        try:
+            finite_value = float(value)
+        except (OverflowError, ValueError):
+            raise ValueError(f"Presto input requires a finite verified field {name}") from None
+        if not math.isfinite(finite_value) or not lower <= finite_value <= upper:
+            raise ValueError(f"Presto input requires a finite verified field {name}")
     month_keys = _month_sequence(record.season_start, 12)
-    if record.season_end < record.season_start or (record.season_end.year, record.season_end.month) not in set(month_keys):
+    month_key_set = set(month_keys)
+    if record.season_end < record.season_start or (record.season_end.year, record.season_end.month) not in month_key_set:
         raise ValueError("season date range must fit within the 12-month Presto window")
+    supplied_keys = [(item.year, item.month) for item in record.months]
+    if len(supplied_keys) != len(set(supplied_keys)):
+        raise ValueError("crop-history months must be unique within a season")
     by_month = {(item.year, item.month): item for item in record.months}
-    outside = [key for key in by_month if key not in set(month_keys)]
+    outside = [key for key in by_month if key not in month_key_set]
     if outside:
         raise ValueError("crop-history months must fall within the 12-month Presto window")
 
@@ -57,11 +72,22 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
     for timestep, key in enumerate(month_keys):
         month = by_month.get(key)
         raw = month.presto_bands if month else {}
+        if not isinstance(raw, dict):
+            raise ValueError("Presto monthly bands must be an object")
+        unknown_channels = set(raw) - set(PRESTO_BANDS)
+        if unknown_channels:
+            raise ValueError(f"Presto input contains unsupported channel(s): {sorted(unknown_channels)}")
         for channel_index, name in enumerate(PRESTO_BANDS):
             value = raw.get(name)
             if value is None:
                 continue
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"Presto input channel {name} must be finite numeric data")
+            try:
+                numeric_value = float(value)
+            except (OverflowError, ValueError):
+                raise ValueError(f"Presto input channel {name} must be finite numeric data") from None
+            if not math.isfinite(numeric_value):
                 raise ValueError(f"Presto input channel {name} must be finite numeric data")
             bounds = {
                 "vv_db": (-50.0, 1.0), "vh_db": (-50.0, 1.0),
@@ -75,26 +101,33 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
                 "elevation_m": (-500.0, 9000.0), "slope_degrees": (0.0, 90.0),
             }
             lower, upper = bounds[name]
-            if not lower <= float(value) <= upper:
+            if not lower <= numeric_value <= upper:
                 raise ValueError(f"Presto input channel {name} is outside its expected source-unit range")
             if name.endswith("_dn") and float(value) < 10.0:
                 raise ValueError(f"Presto input channel {name} expects raw scaled DN, not physical reflectance or nodata")
             if name in ("vv_db", "vh_db"):
-                normalized = (float(value) + 25.0) / 25.0
+                normalized = (numeric_value + 25.0) / 25.0
             elif name in ("b02_dn", "b03_dn", "b04_dn", "b05_dn", "b06_dn", "b07_dn", "b08_dn", "b8a_dn", "b11_dn", "b12_dn"):
-                normalized = float(value) / 10000.0
+                normalized = numeric_value / 10000.0
             elif name == "temperature_2m_k":
-                normalized = (float(value) - 272.15) / 35.0
+                normalized = (numeric_value - 272.15) / 35.0
             elif name == "total_precipitation_m":
-                normalized = float(value) / 0.03
+                normalized = numeric_value / 0.03
             elif name == "elevation_m":
-                normalized = float(value) / 2000.0
+                normalized = numeric_value / 2000.0
             else:  # slope_degrees
-                normalized = float(value) / 50.0
+                normalized = numeric_value / 50.0
             x[timestep, channel_index] = normalized
             mask[timestep, channel_index] = 0.0
         if month and month.dynamic_world_class is not None:
-            dynamic_world[timestep] = month.dynamic_world_class
+            dynamic_class = month.dynamic_world_class
+            if (
+                isinstance(dynamic_class, bool)
+                or not isinstance(dynamic_class, int)
+                or not 0 <= dynamic_class <= 8
+            ):
+                raise ValueError("Dynamic World class must be an integer from 0 through 8; 9 is reserved for missing")
+            dynamic_world[timestep] = dynamic_class
 
         # NDVI is derived only when both reflectance inputs are present.
         red_index = PRESTO_BANDS.index("b04_dn")
