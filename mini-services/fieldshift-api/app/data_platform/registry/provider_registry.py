@@ -403,12 +403,14 @@ def get_provider_registry() -> ProviderRegistry:
         # Canonical Egypt Level-2 dekadal products (100 m); discovery and
         # raster reads are real-data only and remain optional until live checks.
         wapor_v3 = WaPORV3Provider()
+        wapor_rasterio_ok = _rasterio_available()
         registry.register(
             wapor_v3,
             kind="api_raster",
-            status="optional",
+            status="optional" if wapor_rasterio_ok else "degraded",
             details={
                 "is_synthetic": False,
+                "rasterio_available": wapor_rasterio_ok,
                 "variables": wapor_v3.supported_variables(),
                 "products": sorted(set(WAPOR_EGYPT_L2_VARIABLE_MAP.values())),
                 "country_codes": ["EGY"],
