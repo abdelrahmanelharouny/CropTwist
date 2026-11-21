@@ -411,3 +411,24 @@ def test_radiometry_rejects_conflicting_stac_and_geotiff_offsets():
     }
     with pytest.raises(ValueError, match="offset metadata conflict"):
         _radiometry_for_scene(item, reading, {"red": "red.tif"})
+
+def test_stac_transport_error_does_not_leak_signed_query_parameters():
+    from app.core.errors import ProviderUnavailable
+
+    secret_url = "https://stac.example.test/search?access_token=secret-value"
+
+    class BrokenClient:
+        def post(self, url, **kwargs):
+            request = httpx.Request("POST", secret_url)
+            raise httpx.ConnectError(f"connect failed for {secret_url}", request=request)
+
+    provider = Sentinel2StacProvider(client=BrokenClient())
+    with pytest.raises(ProviderUnavailable) as exc:
+        provider.search_items(
+            geometry_geojson=fixture_field_geojson(),
+            start=datetime(2024, 7, 1, tzinfo=UTC),
+            end=datetime(2024, 7, 31, tzinfo=UTC),
+        )
+    assert "secret-value" not in str(exc.value)
+    assert "access_token" not in str(exc.value)
+    assert exc.value.details == [{"reason": "ConnectError"}]
