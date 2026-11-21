@@ -56,6 +56,40 @@ def model_card() -> dict[str, str]:
         "warning": "Pretrained embeddings are not Egyptian crop labels or calibrated crop probabilities.",
     }
 
+def _count_valid_encoder_tokens(item: dict[str, Any]) -> int:
+    """Count valid EO/Dynamic World tokens before the encoder adds lat/lon.
+
+    Keep this in lockstep with TorchGeo's BANDS_GROUPS_IDX: each band group
+    contributes one token per valid month, SRTM contributes one static token,
+    and Dynamic World contributes one token per non-missing month.
+    """
+    from app.intelligence.crop_history.presto_inputs import PRESTO_BANDS
+
+    mask_array = item["mask"][0]
+    dynamic_world = item["dynamic_world"][0]
+    groups = (
+        ("S1", ("vv_db", "vh_db")),
+        ("S2_RGB", ("b02_dn", "b03_dn", "b04_dn")),
+        ("S2_Red_Edge", ("b05_dn", "b06_dn", "b07_dn")),
+        ("S2_NIR_10m", ("b08_dn",)),
+        ("S2_NIR_20m", ("b8a_dn",)),
+        ("S2_SWIR", ("b11_dn", "b12_dn")),
+        ("ERA5", ("temperature_2m_k", "total_precipitation_m")),
+        ("NDVI", ("ndvi",)),
+    )
+    channel_index = {name: index for index, name in enumerate(PRESTO_BANDS)}
+    valid_tokens = int((dynamic_world != 9).sum())
+    for _, channels in groups:
+        indices = [len(PRESTO_BANDS) if name == "ndvi" else channel_index[name] for name in channels]
+        valid_tokens += sum(
+            1 for month_index in range(12)
+            if not mask_array[month_index, indices].any()
+        )
+    srtm_indices = [channel_index["elevation_m"], channel_index["slope_degrees"]]
+    if not mask_array[0, srtm_indices].any():
+        valid_tokens += 1
+    return valid_tokens
+
 def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size: int = 32) -> list[list[float]]:
     """Generate pretrained 128-D pixel/field embeddings without training a head.
 
@@ -80,34 +114,11 @@ def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size:
     from app.intelligence.crop_history.presto_inputs import build_presto_input
 
     prepared = [build_presto_input(record) for record in records]
-    # TorchGeo's Presto encoder compacts masked tokens with a reshape, so every
-    # sample in a tensor batch must have the same number of valid tokens.
-    # Bucket by valid-token count before batching to avoid shape-dependent
-    # failures when fields have different cloud/missing-modality patterns.
-    from app.intelligence.crop_history.presto_inputs import PRESTO_BANDS
-
-    groups = (
-        ("S1", ("vv_db", "vh_db")),
-        ("S2_RGB", ("b02_dn", "b03_dn", "b04_dn")),
-        ("S2_Red_Edge", ("b05_dn", "b06_dn", "b07_dn")),
-        ("S2_NIR_10m", ("b08_dn",)),
-        ("S2_NIR_20m", ("b8a_dn",)),
-        ("S2_SWIR", ("b11_dn", "b12_dn")),
-        ("ERA5", ("temperature_2m_k", "total_precipitation_m")),
-        ("NDVI", ("ndvi",)),
-    )
-    channel_index = {name: index for index, name in enumerate(PRESTO_BANDS)}
-    ndvi_index = len(PRESTO_BANDS)
+    # TorchGeo compacts masked tokens and requires equal valid-token counts
+    # within a tensor batch. Bucket by the exact upstream band-group contract.
     buckets: dict[int, list[int]] = {}
     for index, item in enumerate(prepared):
-        mask_array = item["mask"][0]
-        valid_tokens = int((item["dynamic_world"][0] != 9).sum())
-        for _, channels in groups:
-            indices = [ndvi_index if name == "ndvi" else channel_index[name] for name in channels]
-            valid_tokens += sum(1 for month_index in range(12) if not mask_array[month_index, indices].any())
-        srtm_indices = [channel_index["elevation_m"], channel_index["slope_degrees"]]
-        if not mask_array[0, srtm_indices].any():
-            valid_tokens += 1
+        valid_tokens = _count_valid_encoder_tokens(item)
         buckets.setdefault(valid_tokens, []).append(index)
 
     outputs: list[list[float] | None] = [None] * len(prepared)
