@@ -241,6 +241,8 @@ class WaPORV3Client:
             values = raw[valid]
         except WaPORProviderError:
             raise
+        except WaPORProviderError:
+            raise
         except Exception:
             raise WaPORProviderError("FAO raster could not be read for the requested field") from None
         if values.size:
