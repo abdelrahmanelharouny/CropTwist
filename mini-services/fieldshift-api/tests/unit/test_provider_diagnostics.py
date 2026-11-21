@@ -123,3 +123,20 @@ def test_probe_does_not_verify_an_unexpected_nonempty_response(monkeypatch):
     assert result["status"] == "unexpected_response"
     assert "content" not in result
     assert "I cannot follow" not in str(result)
+
+def test_probe_does_not_echo_untrusted_exception_category(monkeypatch):
+    class SecretCategoryError(RuntimeError):
+        category = "secret_token_value_123"
+
+    class Broken:
+        name = "broken"
+        model = "model"
+        configured = True
+
+        async def generate(self, messages, **kwargs):
+            raise SecretCategoryError("upstream failed")
+
+    monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Broken())
+    result = asyncio.run(provider_diagnostics.probe_provider("broken"))
+    assert result["error_category"] == "provider_probe_failed"
+    assert "secret_token_value_123" not in str(result)
