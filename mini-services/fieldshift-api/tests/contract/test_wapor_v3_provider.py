@@ -75,6 +75,9 @@ def test_list_rasters_validates_mapset_and_trusted_cog_url():
     assert len(rasters) == 1
     assert rasters[0]["unit"] == "mm/dekad"
     assert rasters[0]["period_code"] == "2025-01-D1"
+    assert rasters[0]["resolution_m"] == 100
+    assert rasters[0]["license"] == "CC BY-SA 4.0"
+    assert rasters[0]["metadata_reference"].endswith("WaPOR_specs.html")
     with pytest.raises(ValueError, match="mapset code"):
         client.list_rasters("../secrets")
 
