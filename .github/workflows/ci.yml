@@ -19,6 +19,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 # A feature-branch push and its pull_request event share one concurrency key.
 # Keep only one expensive PostGIS + frontend run per branch.
