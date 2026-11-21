@@ -67,3 +67,15 @@ def test_labelled_record_requires_verified_source_and_license():
             label_crop_code="WHEAT", label_source="verified_farmer_record",
             months=[MonthlyCropFeatures(month=1, year=2025, values={}, valid_observation_count=0)],
         )
+
+
+def test_farm_split_seed_changes_assignment_without_changing_group_membership():
+    records = [_record(f"farm-{i}", f"field-{i}") for i in range(20)]
+    first = split_group_ids(records, seed=11)
+    same = split_group_ids(list(reversed(records)), seed=11)
+    alternate = split_group_ids(records, seed=12)
+    assert first == same
+    assert first != alternate
+    assert set(first["train"] + first["validation"] + first["test"]) == {
+        record.farm_group_id for record in records
+    }
