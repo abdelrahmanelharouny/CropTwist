@@ -3,6 +3,8 @@
 from dataclasses import replace
 from datetime import date
 
+import pytest
+
 from tests.unit.test_rotation_core import (
     SUMMER,
     _crop,
