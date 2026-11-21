@@ -681,8 +681,11 @@ def _scene_observations(
             "qa_nodata_pixels": int((~valid_qa).sum()),
             "aot_level_counts": {
                 "climatology": int(((aot_level == 0) & valid_qa).sum()),
-                "low": int(((aot_level == 1) & valid_qa).sum()),
-                "medium": int(((aot_level == 2) & valid_qa).sum()),
+                # HLS v2 guide expresses the pair in bit-7/bit-6 order:
+                # 10 = low (raw byte bits 7:6 -> shifted value 2),
+                # 01 = medium (shifted value 1).
+                "low": int(((aot_level == 2) & valid_qa).sum()),
+                "medium": int(((aot_level == 1) & valid_qa).sum()),
                 "high": int(((aot_level == 3) & valid_qa).sum()),
             },
         }
