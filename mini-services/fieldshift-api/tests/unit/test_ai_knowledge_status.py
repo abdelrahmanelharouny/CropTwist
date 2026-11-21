@@ -121,3 +121,16 @@ def test_knowledge_status_route_checks_a_tenant_scoped_searchable_vector(monkeyp
     assert "ai_knowledge_documents.embedding_provider" in sql
     assert "ai_knowledge_documents.embedding_model" in sql
     assert list(compiled.params.values()).count(organization_id) == 2
+
+def test_unknown_requested_embedding_provider_is_reported_as_unavailable(monkeypatch):
+    from app.api.v1 import ai_core
+
+    class Registry:
+        def names(self):
+            return ["fastembed"]
+
+        def get(self, name):
+            raise LookupError(name)
+
+    monkeypatch.setattr(ai_core, "embedding_provider_registry", Registry())
+    assert ai_core._knowledge_provider("not-registered") is None
