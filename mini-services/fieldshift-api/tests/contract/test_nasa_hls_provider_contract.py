@@ -557,3 +557,33 @@ def test_validate_request_enforces_scene_cap():
     )  # no raise
     with pytest.raises(UnsupportedVariable):
         provider.validate_request(variables=["chlorophyll"], options={})
+
+def test_hls_raster_exception_does_not_leak_signed_asset_url(monkeypatch):
+    secret_url = "https://example.test/asset.tif?token=do-not-leak"
+
+    def fail_read(**kwargs):
+        raise RuntimeError(f"failed to read {secret_url}")
+
+    monkeypatch.setattr(hls_provider_module, "_load_scene_arrays", fail_read)
+    provider = NasaHlsProvider(client=make_client([_search_body([])]))
+    aoi = AreaOfInterest(field_id="f", geometry_geojson=FIELD_GEOMETRY)
+    scene_id = "HLS.L30.T16SDC.2024189T164537.v2.0"
+    records = {
+        scene_id: {
+            "scene_id": scene_id,
+            "collection": "HLSL30",
+            "acquired_at": "2024-07-07T16:45:37+00:00",
+            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+        }
+    }
+    result = provider.fetch_observations(
+        area_of_interest=aoi,
+        variables=["ndvi"],
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+        options={"scene_ids": [scene_id], "scene_records": records},
+    )
+    assert result.observations == []
+    assert any("RuntimeError" in warning for warning in result.warnings)
+    assert secret_url not in str(result.warnings)
+    assert "do-not-leak" not in str(result.warnings)
