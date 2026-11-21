@@ -145,8 +145,11 @@ def test_missing_offset_and_baseline_fails_closed(tmp_path):
 
     item = _write_sentinel2_item(tmp_path, stac_radiometry=False)
     item["properties"].pop("s2:processing_baseline")
-    with pytest.raises(ProviderUnavailable, match="no Sentinel-2 processing baseline"):
+    with pytest.raises(ProviderUnavailable, match="no Sentinel-2 processing baseline") as exc:
         _observations(item, variables=("ndvi",))
+    assert exc.value.details == [
+        {"scene_id": item["id"], "reason": "missing_sentinel2_radiometric_offset"}
+    ]
 
 
 def test_scene_without_scl_is_skipped_instead_of_claiming_cloud_masking(tmp_path):
