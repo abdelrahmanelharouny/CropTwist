@@ -432,3 +432,15 @@ def test_stac_transport_error_does_not_leak_signed_query_parameters():
     assert "secret-value" not in str(exc.value)
     assert "access_token" not in str(exc.value)
     assert exc.value.details == [{"reason": "ConnectError"}]
+
+def test_radiometry_rejects_non_finite_or_boolean_stac_offset():
+    from types import SimpleNamespace
+
+    reading = SimpleNamespace(scale_values={"red": 1.0}, offset_values={"red": 0.0})
+    for bad_offset in (float("nan"), float("inf"), True, "0.0"):
+        item = {
+            "properties": {"processing:version": "05.11"},
+            "assets": {"B04_10m": {"raster:bands": [{"scale": 0.0001, "offset": bad_offset}]}},
+        }
+        with pytest.raises(ValueError, match="STAC offset"):
+            _radiometry_for_scene(item, reading, {"red": "red.tif"})
