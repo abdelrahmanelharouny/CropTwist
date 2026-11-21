@@ -580,6 +580,16 @@ def test_validate_request_enforces_scene_cap():
     with pytest.raises(UnsupportedVariable):
         provider.validate_request(variables=["chlorophyll"], options={})
 
+@pytest.mark.parametrize(
+    "scene_ids",
+    [[], [""], [True], ["scene-1", "scene-1"], ["x" * 257]],
+)
+def test_validate_request_rejects_malformed_scene_selectors_before_job_creation(scene_ids):
+    provider = NasaHlsProvider()
+    with pytest.raises(ProviderRequestError, match="scene_ids"):
+        provider.validate_request(variables=["ndvi"], options={"scene_ids": scene_ids})
+
+
 def test_hls_raster_exception_does_not_leak_signed_asset_url(monkeypatch):
     secret_url = "https://example.test/asset.tif?token=do-not-leak"
 
