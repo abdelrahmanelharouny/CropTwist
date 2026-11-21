@@ -464,7 +464,9 @@ def _validate_scene_record(scene_id: str, record: Any) -> None:
                 details=[{"field": "scene_records", "reason": "cloud_cover_pct must be between 0 and 100"}],
             )
 
-    assets = record.get("assets") or {}
+    assets = record.get("assets")
+    if assets is None:
+        assets = {}
     allowed_surfaces = {"red", "nir", "blue", "green", "swir1", "swir2", "fmask"}
     if not isinstance(assets, dict) or any(key not in allowed_surfaces for key in assets):
         raise ProviderRequestError(
