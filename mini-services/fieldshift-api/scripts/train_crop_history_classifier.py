@@ -69,13 +69,20 @@ def _evaluate_fold(rows: list[dict], train_idx: list[int], test_idx: list[int], 
 
     if len(set(groups)) < 5:
         raise ValueError("at least five training farm groups are required for grouped calibration")
-    splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=seed)
-    fit_idx, calibration_idx = next(splitter.split(X_train, y_train, groups=groups))
+    fit_idx = calibration_idx = None
+    for attempt in range(10):
+        splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=seed + attempt)
+        candidate_fit, candidate_cal = next(splitter.split(X_train, y_train, groups=groups))
+        if set(y_train[candidate_fit]) == set(y_train) and set(y_train[candidate_cal]) == set(y_train):
+            fit_idx, calibration_idx = candidate_fit, candidate_cal
+            break
+    if fit_idx is None or calibration_idx is None:
+        raise ValueError("could not create farm-disjoint fit/calibration groups with all crop classes")
     X_fit, y_fit = X_train[fit_idx], y_train[fit_idx]
     X_cal, y_cal = X_train[calibration_idx], y_train[calibration_idx]
     fit_classes = set(y_fit)
-    if set(y_train) != fit_classes or not set(y_test) <= fit_classes:
-        raise ValueError("grouped fit partition does not cover all train/test crop classes")
+    if not set(y_test) <= fit_classes:
+        raise ValueError("grouped fit partition does not cover all test crop classes")
 
     model = CatBoostClassifier(
         iterations=400, depth=6, learning_rate=0.05,
