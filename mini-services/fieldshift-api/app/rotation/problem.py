@@ -130,7 +130,13 @@ class KnowledgeCrop:
         """
         t = self.resolve_trait(code, country_code)
         value = t.value_numeric if t else None
-        return float(value) if isinstance(value, (int, float)) and math.isfinite(value) else None
+        return (
+            float(value)
+            if isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+            else None
+        )
 
     def numeric_trait_bounds(
         self, code: str, country_code: str | None = None
@@ -144,13 +150,19 @@ class KnowledgeCrop:
         if trait is None:
             return None
         point = trait.value_numeric
-        if isinstance(point, (int, float)) and math.isfinite(point):
+        if (
+            isinstance(point, (int, float))
+            and not isinstance(point, bool)
+            and math.isfinite(point)
+        ):
             value = float(point)
             return value, value
         low, high = trait.value_low, trait.value_high
         if (
             isinstance(low, (int, float))
+            and not isinstance(low, bool)
             and isinstance(high, (int, float))
+            and not isinstance(high, bool)
             and math.isfinite(low)
             and math.isfinite(high)
             and low <= high
