@@ -15,6 +15,7 @@ from typing import Any
 class PrestoModelBundle:
     model: Any
     encoder: Any
+    pool_norm: Any
     model_id: str = "torchgeo/presto"
     weights_id: str = "Presto_Weights.PRESTO"
 
@@ -27,12 +28,20 @@ def load_pretrained(*, device: str = "cpu") -> PrestoModelBundle:
         raise RuntimeError(
             "Presto inference dependencies are optional; install requirements-ml.txt"
         ) from exc
+    import copy
+    import torch
+
     model = presto(weights=Presto_Weights.PRESTO)
     model = model.to(device)
     model.eval()
-    encoder = model.encoder
+    # Reproduce upstream Presto eval_task=True pooling: average unnormalized
+    # valid tokens, then apply LayerNorm once to the pooled vector.
+    encoder = copy.deepcopy(model.encoder)
+    pool_norm = copy.deepcopy(model.encoder.norm)
+    encoder.norm = torch.nn.Identity()
     encoder.eval()
-    return PrestoModelBundle(model=model, encoder=encoder)
+    pool_norm.eval()
+    return PrestoModelBundle(model=model, encoder=encoder, pool_norm=pool_norm)
 
 
 def model_card() -> dict[str, str]:
@@ -78,14 +87,14 @@ def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size:
         ).to(device)
         months = torch.tensor([item["month"] for item in batch], dtype=torch.long, device=device)
         with torch.inference_mode():
-            embeddings = bundle.encoder(
+            tokens, _, _ = bundle.encoder(
                 x=x,
                 dynamic_world=dynamic_world,
                 latlons=latlons,
                 mask=mask,
                 month=months,
-                eval_task=True,
             )
+            embeddings = bundle.pool_norm(tokens.mean(dim=1))
         if embeddings.ndim != 2 or embeddings.shape[0] != len(batch):
             raise RuntimeError("Presto encoder returned an invalid embedding shape")
         values = embeddings.detach().cpu().float().numpy()
