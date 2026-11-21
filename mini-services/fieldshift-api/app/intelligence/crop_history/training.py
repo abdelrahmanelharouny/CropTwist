@@ -64,7 +64,7 @@ def validate_training_rows(rows: list[dict[str, Any]]) -> None:
         seen.add(key)
         raw_coverage = row["valid_pixel_coverage"]
         if not _is_finite_numeric(raw_coverage):
-            raise ValueError("valid_pixel_coverage must be numeric, finite, and not boolean")
+            raise ValueError("valid_pixel_coverage must be numeric, not boolean, and finite")
         coverage = float(raw_coverage)
         if not math.isfinite(coverage) or not 0.2 <= coverage <= 1.0:
             raise ValueError("valid_pixel_coverage must be finite and between 0.2 and 1.0")
