@@ -20,6 +20,9 @@ def _record(farm: str, field: str = "field-1") -> CropHistoryRecord:
         season_end=date(2025, 12, 31),
         label_crop_code="WHEAT",
         label_source="verified_farmer_record",
+        label_source_verified=True,
+        label_license="CC BY-SA 4.0",
+        label_license_verified=True,
         label_confidence=0.95,
         months=[MonthlyCropFeatures(month=1, year=2025, values={"ndvi": 0.4}, valid_observation_count=2)],
     )
