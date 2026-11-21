@@ -13,7 +13,6 @@ from typing import Any
 
 @dataclass(frozen=True)
 class PrestoModelBundle:
-    model: Any
     encoder: Any
     pool_norm: Any
     model_id: str = "torchgeo/presto"
@@ -41,7 +40,8 @@ def load_pretrained(*, device: str = "cpu") -> PrestoModelBundle:
     encoder.norm = torch.nn.Identity()
     encoder.eval()
     pool_norm.eval()
-    return PrestoModelBundle(model=model, encoder=encoder, pool_norm=pool_norm)
+    del model  # discard unused decoder and original encoder to keep ML-worker RAM bounded
+    return PrestoModelBundle(encoder=encoder, pool_norm=pool_norm)
 
 
 def model_card() -> dict[str, str]:
