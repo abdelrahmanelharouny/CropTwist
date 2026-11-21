@@ -18,7 +18,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from app.core.errors import InvalidDateRange, ProviderUnavailable, UnsupportedVariable
+from app.core.errors import InvalidDateRange, ProviderUnavailable, UnsupportedVariable, ValidationFailed
 from app.data_platform.contracts.observations import (
     AreaOfInterest,
     CanonicalObservation,
@@ -393,12 +393,19 @@ class WaPORV3Provider:
         end: datetime,
         options: dict[str, Any] | None = None,
     ) -> ProviderFetchResult:
-        validate_provider_request(variables, start, end)
         if start.tzinfo is None or end.tzinfo is None:
             raise InvalidDateRange("WaPOR requests require timezone-aware start/end timestamps.")
-        options = options or {}
-        country_code = str(options.get("country_code", "EGY")).strip().upper()
-        level = int(options.get("level", 2))
+        validate_provider_request(variables, start, end)
+        if options is None:
+            options = {}
+        if not isinstance(options, dict):
+            raise ValidationFailed("WaPOR provider options must be an object.")
+        raw_country_code = options.get("country_code", "EGY")
+        raw_level = options.get("level", 2)
+        if not isinstance(raw_country_code, str) or isinstance(raw_level, bool) or not isinstance(raw_level, int):
+            raise ValidationFailed("WaPOR country_code and level options have invalid types.")
+        country_code = raw_country_code.strip().upper()
+        level = raw_level
         if country_code != "EGY" or level != 2:
             raise UnsupportedVariable(
                 "The canonical WaPOR provider currently exposes only Egypt Level-2 dekadal products."
@@ -445,12 +452,22 @@ class WaPORV3Provider:
                 continue
             for raster, period_start, period_end, partial_period in selected:
                 rasters_seen += 1
+                raw_window_limit = options.get("max_window_mb", 128.0)
+                try:
+                    if isinstance(raw_window_limit, bool):
+                        raise ValueError
+                    window_limit = float(raw_window_limit)
+                except (TypeError, ValueError):
+                    raise ValidationFailed("WaPOR max_window_mb must be a finite number between 1 and 256.") from None
+                import math
+                if not math.isfinite(window_limit) or not 1.0 <= window_limit <= 256.0:
+                    raise ValidationFailed("WaPOR max_window_mb must be a finite number between 1 and 256.")
                 try:
                     window = self.client.read_field_window(
                         mapset_code=mapset_code,
                         raster=raster,
                         geometry_geojson=area_of_interest.geometry_geojson,
-                        max_window_mb=float(options.get("max_window_mb", 128.0)),
+                        max_window_mb=window_limit,
                     )
                 except Exception as exc:  # noqa: BLE001
                     raise ProviderUnavailable(
