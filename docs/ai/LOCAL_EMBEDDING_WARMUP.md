@@ -2,7 +2,7 @@
 
 The reviewed local model is `intfloat/multilingual-e5-small` (384-D, MIT).
 FastEmbed 0.7.4 loads the ONNX export from a pinned Hugging Face revision
-(`ffdcc22`); the 470 MB `onnx/model.onnx` artifact must match SHA-256
+(`919cfbe11fbf4f1b9bb321007c46c14feaf84227`); the 470 MB `onnx/model.onnx` artifact must match SHA-256
 `ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665`
 before ONNX Runtime is initialized. The wrapper applies the E5 task contract:
 `passage: ` for document chunks and `query: ` for user queries.
