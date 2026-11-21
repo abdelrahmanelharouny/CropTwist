@@ -342,7 +342,7 @@ WAPOR_EGYPT_L2_VARIABLE_MAP = {
 
 
 def _dekad_period(period_code: str) -> tuple[datetime, datetime]:
-    match = re.fullmatch(r"(\\d{4})-(\\d{2})-D([1-3])", period_code)
+    match = re.fullmatch(r"(\d{4})-(\d{2})-D([1-3])", period_code)
     if not match:
         raise ValueError("invalid WaPOR dekadal period code")
     year, month, dekad = (int(value) for value in match.groups())
