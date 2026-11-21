@@ -1,3 +1,5 @@
+import pytest
+
 from app.intelligence.crop_history.training import (
     spatial_temporal_holdout,
     validate_training_rows,
@@ -76,3 +78,35 @@ def test_training_data_blocks_unverified_label_provenance():
         assert "unverified label license" in str(exc)
     else:
         raise AssertionError("unverified license must block training")
+
+
+
+@pytest.mark.parametrize(
+    "field,value,message",
+    [
+        ("season_year", "2023", "integer year"),
+        ("season_year", 2023.5, "integer year"),
+        ("valid_pixel_coverage", "0.8", "numeric, not boolean"),
+        ("valid_pixel_coverage", True, "numeric, not boolean"),
+    ],
+)
+def test_training_metadata_rejects_coerced_non_numeric_values(field, value, message):
+    rows = [
+        _row("f1", "farm1", "zankalon", 2023, "wheat"),
+        _row("f2", "farm2", "sidi_ghazi", 2023, "maize"),
+        _row("f3", "farm3", "mallawi", 2023, "clover"),
+    ]
+    rows[0][field] = value
+    with pytest.raises(ValueError, match=message):
+        validate_training_rows(rows)
+
+
+def test_training_metadata_rejects_numeric_strings_in_embeddings():
+    rows = [
+        _row("f1", "farm1", "zankalon", 2023, "wheat"),
+        _row("f2", "farm2", "sidi_ghazi", 2023, "maize"),
+        _row("f3", "farm3", "mallawi", 2023, "clover"),
+    ]
+    rows[0]["embedding"][0] = "0.1"
+    with pytest.raises(ValueError, match="non-finite or non-numeric"):
+        validate_training_rows(rows)
