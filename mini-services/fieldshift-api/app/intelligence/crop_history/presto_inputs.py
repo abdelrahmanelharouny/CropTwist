@@ -75,6 +75,8 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
             lower, upper = bounds[name]
             if not lower <= float(value) <= upper:
                 raise ValueError(f"Presto input channel {name} is outside its expected source-unit range")
+            if name.endswith("_dn") and float(value) < 10.0:
+                raise ValueError(f"Presto input channel {name} expects raw scaled DN, not physical reflectance or nodata")
             if name in ("vv_db", "vh_db"):
                 normalized = (float(value) + 25.0) / 25.0
             elif name in ("b02_dn", "b03_dn", "b04_dn", "b05_dn", "b06_dn", "b07_dn", "b08_dn", "b8a_dn", "b11_dn", "b12_dn"):
