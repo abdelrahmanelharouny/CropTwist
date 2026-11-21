@@ -37,18 +37,24 @@ def validate_training_rows(rows: list[dict[str, Any]]) -> None:
             raise ValueError(f"row {index} uses an unsupported or mixed embedding model")
         if row["input_schema_version"] != "presto-17ch-12m-v1":
             raise ValueError(f"row {index} uses an unsupported Presto input schema")
+        if isinstance(row["season_year"], bool):
+            raise ValueError("season_year must be an integer year")
         year = int(row["season_year"])
+        if not 2000 <= year <= 2100:
+            raise ValueError("season_year is outside the supported range")
         key = (row["field_id"], year)
         if key in seen:
             raise ValueError("duplicate field-season records are not allowed")
         seen.add(key)
+        if isinstance(row["valid_pixel_coverage"], bool):
+            raise ValueError("valid_pixel_coverage must be numeric, not boolean")
         coverage = float(row["valid_pixel_coverage"])
         if not math.isfinite(coverage) or not 0.2 <= coverage <= 1.0:
             raise ValueError("valid_pixel_coverage must be finite and between 0.2 and 1.0")
         embedding = row.get("embedding")
         if not isinstance(embedding, (list, tuple)) or len(embedding) != EMBEDDING_DIM:
             raise ValueError(f"row {index} must contain a {EMBEDDING_DIM}-D Presto embedding")
-        if any(not math.isfinite(float(value)) for value in embedding):
+        if any(isinstance(value, bool) or not math.isfinite(float(value)) for value in embedding):
             raise ValueError(f"row {index} contains non-finite embedding values")
         regions.add(row["region_id"])
         classes.add(row["crop_code"])
