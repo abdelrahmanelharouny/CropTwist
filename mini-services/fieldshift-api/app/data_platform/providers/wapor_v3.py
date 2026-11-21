@@ -157,7 +157,7 @@ class WaPORV3Client:
         if not _CODE_RE.fullmatch(code):
             raise ValueError("mapset code is invalid")
         # Reject unknown products before constructing a provider URL.
-        get_product(code)
+        product = get_product(code)
         items = self._collect(f"{API_ROOT}/{code}/rasters")
         result: list[dict[str, Any]] = []
         for item in items:
@@ -176,8 +176,8 @@ class WaPORV3Client:
             result.append({
                 "code": raster_code,
                 "download_url": download_url,
-                "unit": item.get("unit") if isinstance(item.get("unit"), str) else None,
-                "scale_factor": item.get("scale") if isinstance(item.get("scale"), (int, float)) else None,
+                "unit": item.get("unit") if isinstance(item.get("unit"), str) else product.unit,
+                "scale_factor": item.get("scale") if isinstance(item.get("scale"), (int, float)) else product.scale_factor,
                 "offset": item.get("offset") if isinstance(item.get("offset"), (int, float)) else None,
                 "period_code": period_code,
                 "raw_metadata": {key: item[key] for key in ("unit", "scale", "offset", "startDate", "endDate") if key in item},
