@@ -148,3 +148,70 @@ def test_field_window_refuses_non_tiled_asset(monkeypatch):
             },
             geometry_geojson={"type": "Polygon", "coordinates": []},
         )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://storage.googleapis.com:444/fao-gismgr-wapor-3-data/sample.tif",
+        "https://user:secret@storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
+    ],
+)
+def test_field_window_rejects_untrusted_raster_authority_before_io(monkeypatch, url):
+    monkeypatch.setattr(
+        wapor_v3,
+        "_read_raster_metadata",
+        lambda _: (_ for _ in ()).throw(AssertionError("untrusted URL reached rasterio")),
+    )
+    with pytest.raises(ValueError, match="trusted FAO COG URL"):
+        wapor_v3.WaPORV3Client().read_field_window(
+            mapset_code="L2-T-D",
+            raster={
+                "code": "WAPOR-3.L2-T-D.2025-01-D1",
+                "download_url": url,
+            },
+            geometry_geojson={"type": "Polygon", "coordinates": []},
+        )
+
+
+def test_invalid_scale_offset_and_unit_fall_back_to_documented_metadata(monkeypatch):
+    class Reading:
+        arrays = {"wapor": np.array([[2.0]])}
+        crs = "EPSG:32636"
+        transform = object()
+        width = 1
+        height = 1
+
+    monkeypatch.setattr(
+        wapor_v3,
+        "get_product",
+        lambda code: type("Product", (), {
+            "resolution_m": 100, "unit": "mm/day", "scale_factor": 0.1,
+            "metadata_reference": "https://example.org/spec", "license": "CC BY-SA 4.0",
+        })(),
+    )
+    monkeypatch.setattr(
+        wapor_v3,
+        "_read_raster_metadata",
+        lambda url: {"unit": "mm/dekad", "scale_factor": 0.2, "offset": 0.0, "is_tiled": True},
+    )
+    monkeypatch.setattr("app.geospatial.preprocessing.read_scene_window", lambda **kwargs: Reading())
+    monkeypatch.setattr(
+        "app.geospatial.preprocessing.field_mask_for_window",
+        lambda **kwargs: np.array([[True]]),
+    )
+    result = wapor_v3.WaPORV3Client().read_field_window(
+        mapset_code="L2-T-D",
+        raster={
+            "code": "WAPOR-3.L2-T-D.2025-01-D1",
+            "download_url": "https://storage.googleapis.com/fao-gismgr-wapor-3-data/sample.tif",
+            "scale_factor": float("nan"),
+            "offset": True,
+            "unit": "unknown",
+        },
+        geometry_geojson={"type": "Polygon", "coordinates": []},
+    )
+    assert result.scale_factor == 0.2
+    assert result.offset == 0.0
+    assert result.unit == "mm/dekad"
+    assert result.scaled_mean == pytest.approx(0.4)
