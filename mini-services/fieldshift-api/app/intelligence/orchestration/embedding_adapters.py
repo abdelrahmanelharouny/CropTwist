@@ -12,8 +12,8 @@ from typing import Any
 from app.intelligence.config import ai_settings
 
 
-class FastEmbedE5Provider:
-    name = "local-fastembed-e5"
+class FastEmbedMultilingualMiniLMProvider:
+    name = "local-fastembed-multilingual-minilm"
     model = ai_settings.ai_knowledge_embedding_model
 
     def __init__(self, *, threads: int = 2) -> None:
@@ -56,4 +56,4 @@ class FastEmbedE5Provider:
 def register_local_embedding_provider(registry: Any) -> None:
     """Register without loading weights or doing network I/O."""
     if ai_settings.ai_knowledge_embedding_enabled:
-        registry.register(FastEmbedE5Provider())
+        registry.register(FastEmbedMultilingualMiniLMProvider())
