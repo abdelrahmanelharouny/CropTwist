@@ -227,55 +227,6 @@ VARIABLE_CATALOG: dict[str, VariableDefinition] = {
             description="WaPOR net primary productivity estimate; not crop yield.",
             evidence_class_hint="satellite_derived_estimate",
         ),
-        # --- FAO WaPOR v3 dekadal water-productivity variables ---
-        VariableDefinition(
-            code="actual_evapotranspiration_interception",
-            name="Actual evapotranspiration and interception (AETI)",
-            unit="mm/day",
-            typical_time_support="dekadal",
-            description="WaPOR v3 dekadal mean daily AETI estimate; modelled satellite product, not a field measurement.",
-            evidence_class_hint="satellite_derived_estimate",
-        ),
-        VariableDefinition(
-            code="evaporation",
-            name="Evaporation",
-            unit="mm/day",
-            typical_time_support="dekadal",
-            description="WaPOR v3 dekadal mean daily evaporation estimate.",
-            evidence_class_hint="satellite_derived_estimate",
-        ),
-        VariableDefinition(
-            code="transpiration",
-            name="Transpiration",
-            unit="mm/day",
-            typical_time_support="dekadal",
-            description="WaPOR v3 dekadal mean daily transpiration estimate.",
-            evidence_class_hint="satellite_derived_estimate",
-        ),
-        VariableDefinition(
-            code="interception",
-            name="Canopy interception",
-            unit="mm/day",
-            typical_time_support="dekadal",
-            description="WaPOR v3 Level 2 dekadal mean daily interception estimate.",
-            evidence_class_hint="satellite_derived_estimate",
-        ),
-        VariableDefinition(
-            code="relative_soil_moisture",
-            name="Relative soil moisture",
-            unit="%",
-            typical_time_support="dekadal",
-            description="WaPOR v3 relative soil-moisture estimate; not volumetric soil moisture.",
-            evidence_class_hint="satellite_derived_estimate",
-        ),
-        VariableDefinition(
-            code="net_primary_productivity",
-            name="Net primary productivity",
-            unit="gC/m2/day",
-            typical_time_support="dekadal",
-            description="WaPOR v3 dekadal mean daily net primary productivity estimate.",
-            evidence_class_hint="satellite_derived_estimate",
-        ),
     ]
 }
 
