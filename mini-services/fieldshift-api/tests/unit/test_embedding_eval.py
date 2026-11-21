@@ -53,3 +53,18 @@ def test_knowledge_chunk_size_respects_multilingual_model_context():
     chunks = chunk_document("Crop rotation improves soil health. " * 40)
     assert chunks
     assert max(len(chunk) for chunk in chunks) <= 1200
+
+
+
+def test_embedding_eval_cosine_handles_large_finite_vectors_without_overflow():
+    from app.intelligence.orchestration.embedding_eval import _cosine
+
+    assert _cosine([1e308, 1e308], [1e308, 1e308]) == pytest.approx(1.0)
+    assert _cosine([1e308, 0.0], [0.0, 1e308]) == pytest.approx(0.0)
+
+
+def test_embedding_eval_cosine_rejects_boolean_components():
+    from app.intelligence.orchestration.embedding_eval import _cosine
+
+    with pytest.raises(ValueError, match="non-finite or non-numeric"):
+        _cosine([True, 0.0], [1.0, 0.0])
