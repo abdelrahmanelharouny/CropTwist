@@ -106,12 +106,47 @@ async def evaluate_embedding_provider(
     batch_size: int = 32,
 ) -> dict[str, Any]:
     """Embed a curated corpus locally and score its relevance judgements."""
-    if not documents or not queries or not 1 <= batch_size <= 32:
+    if (
+        not isinstance(documents, list)
+        or not documents
+        or not isinstance(queries, list)
+        or not queries
+        or isinstance(batch_size, bool)
+        or not isinstance(batch_size, int)
+        or not 1 <= batch_size <= 32
+    ):
         raise ValueError("benchmark corpus or batch size is invalid")
+    if any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("id"), str)
+        or not item["id"].strip()
+        or not isinstance(item.get("text"), str)
+        or not item["text"].strip()
+        for item in documents
+    ):
+        raise ValueError("each benchmark document requires a non-empty string id and text")
+    if any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("id"), str)
+        or not item["id"].strip()
+        or not isinstance(item.get("text"), str)
+        or not item["text"].strip()
+        or not isinstance(item.get("relevant_document_ids"), (list, tuple, set))
+        or not item["relevant_document_ids"]
+        or any(
+            not isinstance(doc_id, str) or not doc_id.strip()
+            for doc_id in item["relevant_document_ids"]
+        )
+        for item in queries
+    ):
+        raise ValueError("each benchmark query requires an id, text and non-empty relevance judgement")
     document_ids = [item["id"] for item in documents]
     query_ids = [item["id"] for item in queries]
-    if any(not isinstance(item.get("text"), str) or not item["text"].strip() for item in [*documents, *queries]):
-        raise ValueError("benchmark text must be non-empty")
+    if len(set(document_ids)) != len(document_ids) or len(set(query_ids)) != len(query_ids):
+        raise ValueError("benchmark document and query IDs must be unique")
+    known_documents = set(document_ids)
+    if any(not set(item["relevant_document_ids"]) <= known_documents for item in queries):
+        raise ValueError("relevance judgement references an unknown document")
     doc_vectors: list[list[float]] = []
     for offset in range(0, len(documents), batch_size):
         doc_vectors.extend(await provider.embed([item["text"] for item in documents[offset : offset + batch_size]]))
