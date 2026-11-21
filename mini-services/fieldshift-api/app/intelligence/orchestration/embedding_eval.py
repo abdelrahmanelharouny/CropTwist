@@ -6,16 +6,29 @@ from typing import Any
 
 
 def _cosine(left: list[float], right: list[float]) -> float:
-    if len(left) != len(right) or not left:
+    if not isinstance(left, (list, tuple)) or not isinstance(right, (list, tuple)) or len(left) != len(right) or not left:
         raise ValueError("embedding dimensions do not match")
-    if not all(math.isfinite(float(value)) for value in [*left, *right]):
-        raise ValueError("embedding contains non-finite values")
-    dot = sum(a * b for a, b in zip(left, right, strict=True))
-    left_norm = math.sqrt(sum(a * a for a in left))
-    right_norm = math.sqrt(sum(b * b for b in right))
-    if left_norm == 0 or right_norm == 0:
+    try:
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value))
+            for value in [*left, *right]
+        ):
+            raise ValueError("embedding contains non-finite or non-numeric values")
+        a = [float(value) for value in left]
+        b = [float(value) for value in right]
+    except (OverflowError, TypeError, ValueError):
+        raise ValueError("embedding contains non-finite or non-numeric values") from None
+    # Scale before dot/norm calculations so large but finite vectors cannot
+    # overflow their squared norms and silently corrupt benchmark rankings.
+    scale_a = max(abs(value) for value in a)
+    scale_b = max(abs(value) for value in b)
+    if scale_a == 0 or scale_b == 0:
         raise ValueError("zero-norm embedding is not valid for cosine retrieval")
-    return dot / (left_norm * right_norm)
+    scaled_a = [value / scale_a for value in a]
+    scaled_b = [value / scale_b for value in b]
+    norm_a = math.hypot(*scaled_a)
+    norm_b = math.hypot(*scaled_b)
+    return sum((x / norm_a) * (y / norm_b) for x, y in zip(scaled_a, scaled_b, strict=True))
 
 
 def evaluate_rankings(
