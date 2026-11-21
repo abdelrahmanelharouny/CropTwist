@@ -61,6 +61,20 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
                 continue
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
                 raise ValueError(f"Presto input channel {name} must be finite numeric data")
+            bounds = {
+                "vv_db": (-80.0, 20.0), "vh_db": (-80.0, 20.0),
+                "b02_dn": (0.0, 20000.0), "b03_dn": (0.0, 20000.0),
+                "b04_dn": (0.0, 20000.0), "b05_dn": (0.0, 20000.0),
+                "b06_dn": (0.0, 20000.0), "b07_dn": (0.0, 20000.0),
+                "b08_dn": (0.0, 20000.0), "b8a_dn": (0.0, 20000.0),
+                "b11_dn": (0.0, 20000.0), "b12_dn": (0.0, 20000.0),
+                "temperature_2m_k": (180.0, 340.0),
+                "total_precipitation_m": (0.0, 2.0),
+                "elevation_m": (-500.0, 9000.0), "slope_degrees": (0.0, 90.0),
+            }
+            lower, upper = bounds[name]
+            if not lower <= float(value) <= upper:
+                raise ValueError(f"Presto input channel {name} is outside its expected source-unit range")
             if name in ("vv_db", "vh_db"):
                 normalized = (float(value) + 25.0) / 25.0
             elif name in ("b02_dn", "b03_dn", "b04_dn", "b05_dn", "b06_dn", "b07_dn", "b08_dn", "b8a_dn", "b11_dn", "b12_dn"):
