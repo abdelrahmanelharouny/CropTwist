@@ -103,3 +103,23 @@ def test_probe_timeout_is_reported_without_raw_exception_details(monkeypatch):
     result = asyncio.run(provider_diagnostics.probe_provider("slow"))
     assert result["status"] == "failed"
     assert result["error_category"] == "provider_probe_failed"
+
+
+
+def test_probe_does_not_verify_an_unexpected_nonempty_response(monkeypatch):
+    class WrongResponse:
+        name = "wrong-response"
+        model = "model"
+        configured = True
+
+        async def generate(self, messages, **kwargs):
+            class Result:
+                content = "I cannot follow the probe instruction."
+                model = "model"
+            return Result()
+
+    monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: WrongResponse())
+    result = asyncio.run(provider_diagnostics.probe_provider("wrong-response"))
+    assert result["status"] == "unexpected_response"
+    assert "content" not in result
+    assert "I cannot follow" not in str(result)
