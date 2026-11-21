@@ -40,8 +40,8 @@ def build_presto_input(record: CropHistoryRecord) -> dict[str, Any]:
     if record.centroid_lat is None or record.centroid_lon is None:
         raise ValueError("Presto input requires a verified field centroid")
     month_keys = _month_sequence(record.season_start, 12)
-    if record.season_end < record.season_start:
-        raise ValueError("season date range is invalid")
+    if record.season_end < record.season_start or (record.season_end.year, record.season_end.month) not in set(month_keys):
+        raise ValueError("season date range must fit within the 12-month Presto window")
     by_month = {(item.year, item.month): item for item in record.months}
     outside = [key for key in by_month if key not in set(month_keys)]
     if outside:
