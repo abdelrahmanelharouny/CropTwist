@@ -173,3 +173,15 @@ def test_spatiotemporal_holdout_rejects_missing_grouping_fields():
     del rows[0]["farm_group_id"]
     with pytest.raises(ValueError, match="farm_group_id must be a non-empty string"):
         spatial_temporal_holdout(rows, held_out_region="east", target_year=2024)
+
+
+
+def test_training_metadata_rejects_finite_float64_embeddings_that_overflow_float32():
+    rows = [
+        _row("f1", "farm1", "zankalon", 2023, "wheat"),
+        _row("f2", "farm2", "sidi_ghazi", 2023, "maize"),
+        _row("f3", "farm3", "mallawi", 2023, "clover"),
+    ]
+    rows[0]["embedding"][0] = 1e300
+    with pytest.raises(ValueError, match="float32-unrepresentable"):
+        validate_training_rows(rows)
