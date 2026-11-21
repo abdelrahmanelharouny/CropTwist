@@ -72,8 +72,8 @@ class AISettings(BaseSettings):
 
     # Retrieval and feedback operational limits. No default corpus is bundled.
     ai_knowledge_max_document_chars: int = Field(default=200_000, ge=1000, le=2_000_000)
-    ai_knowledge_chunk_chars: int = Field(default=1200, ge=200, le=4000)
-    ai_knowledge_chunk_overlap_chars: int = Field(default=160, ge=0, le=1000)
+    ai_knowledge_chunk_chars: int = Field(default=400, ge=200, le=4000)
+    ai_knowledge_chunk_overlap_chars: int = Field(default=50, ge=0, le=1000)
     ai_knowledge_max_results: int = Field(default=5, ge=1, le=20)
     ai_feedback_retention_days: int = Field(default=365, ge=30, le=3650)
     ai_trace_retention_days: int = Field(default=90, ge=7, le=3650)
