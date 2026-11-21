@@ -23,7 +23,7 @@ class _FakeModel:
         return [_FakeVector([0.1, 0.2, 0.3]) for _ in texts]
 
 
-def test_e5_document_and_query_prefixes_are_distinct(monkeypatch):
+def test_local_multilingual_document_and_query_embeddings(monkeypatch):
     model = _FakeModel()
     monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", True)
     monkeypatch.setattr(
@@ -36,7 +36,7 @@ def test_e5_document_and_query_prefixes_are_distinct(monkeypatch):
     query = asyncio.run(provider.embed_query("متى أزرع القمح؟"))
     assert documents == [[0.1, 0.2, 0.3]]
     assert query == [0.1, 0.2, 0.3]
-    assert model.inputs == ["passage: wheat irrigation", "query: متى أزرع القمح؟"]
+    assert model.inputs == ["wheat irrigation", "متى أزرع القمح؟"]
 
 
 def test_e5_adapter_is_disabled_by_default(monkeypatch):
