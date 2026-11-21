@@ -36,11 +36,13 @@ or records with no usable modality fail closed.
 
 ## Inference behavior
 
-The loader uses TorchGeo's pretrained encoder and reconstructs the original
+The loader obtains TorchGeo's pretrained weights, then exposes the encoder and
+its LayerNorm as a small inference bundle. The adapter reconstructs the original
 Presto downstream pooling contract: average unnormalized valid tokens, then
 apply the encoder LayerNorm once. TorchGeo's encoder compacts masked tokens and
 requires equal valid-token counts within a tensor batch, so inference buckets
-records by valid-token count before batching.
+records by valid-token count before batching. This custom pooling path remains
+subject to a numerical-parity test against the upstream public inference API.
 
 The output is a 128-D representation only. It is not a crop label, probability,
 or confidence score. A crop classifier head is deliberately not shipped until
@@ -64,8 +66,9 @@ independence of labels are verified.
 
 Once verified labels and Presto embeddings are assembled into a CSV with
 `field_id`, `farm_group_id`, `region_id`, `season_year`, `crop_code`,
-`label_source`, `label_source_verified`, `label_license`,\n`label_license_verified`, `valid_pixel_coverage`, `embedding_model`,\n`input_schema_version` and
-`embedding_0..embedding_127`, run:
+`label_source`, `label_source_verified`, `label_license`,
+`label_license_verified`, `valid_pixel_coverage`, `embedding_model`,
+`input_schema_version` and `embedding_0..embedding_127`, run:
 
 ```bash
 python scripts/train_crop_history_classifier.py ./egypt-presto-embeddings.csv
