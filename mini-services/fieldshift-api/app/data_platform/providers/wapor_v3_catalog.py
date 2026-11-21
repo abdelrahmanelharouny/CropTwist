@@ -24,6 +24,7 @@ class WaPORProduct:
     unit: str | None = None
     scale_factor: float | None = None
     metadata_reference: str = "https://docs.digitalearthafrica.org/en/latest/data_specs/WaPOR_specs.html"
+    license: str = "CC BY-SA 4.0"
 
 
 # FAO's published v3 catalogue lists these Level 1 and Level 2 collections.
@@ -31,7 +32,7 @@ class WaPORProduct:
 WAPOR_V3_PRODUCTS: tuple[WaPORProduct, ...] = (
     WaPORProduct("L1-AETI-D", "projects/UNFAO/wapor/v3/L1-AETI-D", 1, "aeti", "dekadal", 300, "global", (), unit="mm/day", scale_factor=0.1),
     WaPORProduct("L1-E-D", "projects/UNFAO/wapor/v3/L1-E-D", 1, "evaporation", "dekadal", 300, "global", (), unit="mm/day", scale_factor=0.1),
-    WaPORProduct("L1-I-D", "projects/UNFAO/wapor/v3/L1-I-D", 1, "interception", "dekadal", 300, "global", (), scale_factor=0.1),
+    WaPORProduct("L1-I-D", "projects/UNFAO/wapor/v3/L1-I-D", 1, "interception", "dekadal", 300, "global", (), unit="mm/year", scale_factor=0.1),
     WaPORProduct("L1-T-D", "projects/UNFAO/wapor/v3/L1-T-D", 1, "transpiration", "dekadal", 300, "global", (), unit="mm/day", scale_factor=0.1),
     WaPORProduct("L1-NPP-D", "projects/UNFAO/wapor/v3/L1-NPP-D", 1, "npp", "dekadal", 300, "global", (), unit="gC/m2/day", scale_factor=0.001),
     WaPORProduct("L1-RET-D", "projects/UNFAO/wapor/v3/L1-RET-D", 1, "ret", "dekadal", 30000, "global", (), unit="mm/day", scale_factor=0.1),
