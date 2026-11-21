@@ -111,3 +111,11 @@ def test_local_adapter_rejects_invalid_embedding_vectors(monkeypatch, vector, me
     )
     with pytest.raises(ValueError, match=message):
         asyncio.run(FastEmbedMultilingualMiniLMProvider().embed(["test"]))
+
+
+def test_local_adapter_refuses_unreviewed_model_before_loading_fastembed(monkeypatch):
+    monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_enabled", True)
+    monkeypatch.setattr(ai_settings, "ai_knowledge_embedding_model", "intfloat/multilingual-e5-small")
+    provider = FastEmbedMultilingualMiniLMProvider()
+    with pytest.raises(RuntimeError, match="not the reviewed multilingual MiniLM model"):
+        asyncio.run(provider.embed(["test"]))
