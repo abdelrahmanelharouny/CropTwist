@@ -31,7 +31,7 @@ WAPOR_V3_PRODUCTS: tuple[WaPORProduct, ...] = (
     WaPORProduct("L1-I-D", "projects/UNFAO/wapor/v3/L1-I-D", 1, "interception", "dekadal", 300, "global", ()),
     WaPORProduct("L1-T-D", "projects/UNFAO/wapor/v3/L1-T-D", 1, "transpiration", "dekadal", 300, "global", ()),
     WaPORProduct("L1-NPP-D", "projects/UNFAO/wapor/v3/L1-NPP-D", 1, "npp", "dekadal", 300, "global", ()),
-    WaPORProduct("L1-RET-D", "projects/UNFAO/wapor/v3/L1-RET-D", 1, "ret", "dekadal", 300, "global", ()),
+    WaPORProduct("L1-RET-D", "projects/UNFAO/wapor/v3/L1-RET-D", 1, "ret", "dekadal", 30000, "global", ()),
     WaPORProduct("L2-AETI-D", "projects/UNFAO/wapor/v3/L2-AETI-D", 2, "aeti", "dekadal", 100, "Africa and Near East", ("EGY",)),
     WaPORProduct("L2-E-D", "projects/UNFAO/wapor/v3/L2-E-D", 2, "evaporation", "dekadal", 100, "Africa and Near East", ("EGY",)),
     WaPORProduct("L2-I-D", "projects/UNFAO/wapor/v3/L2-I-D", 2, "interception", "dekadal", 100, "Africa and Near East", ("EGY",)),
