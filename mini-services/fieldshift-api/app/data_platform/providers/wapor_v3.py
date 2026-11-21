@@ -43,17 +43,20 @@ def _safe_raster_url(url: str) -> bool:
     """Accept only public FAO WaPOR objects in the documented GCS bucket."""
     if not isinstance(url, str):
         return False
-    parsed = urlsplit(url)
-    return (
-        parsed.scheme == "https"
-        and parsed.hostname in RASTER_HOSTS
-        and parsed.port in (None, 443)
-        and parsed.username is None
-        and parsed.password is None
-        and parsed.path.startswith(_RASTER_BUCKET_PREFIX)
-        and parsed.path != _RASTER_BUCKET_PREFIX
-        and not parsed.fragment
-    )
+    try:
+        parsed = urlsplit(url)
+        return (
+            parsed.scheme == "https"
+            and parsed.hostname in RASTER_HOSTS
+            and parsed.port in (None, 443)
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.path.startswith(_RASTER_BUCKET_PREFIX)
+            and parsed.path != _RASTER_BUCKET_PREFIX
+            and not parsed.fragment
+        )
+    except ValueError:
+        return False
 _MAX_PAGES = 50
 _MAX_RESPONSE_BYTES = 8_000_000
 _CODE_RE = re.compile(r"^L[12]-[A-Z0-9-]{2,40}$")
