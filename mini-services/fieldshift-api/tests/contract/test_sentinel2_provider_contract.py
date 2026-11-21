@@ -245,3 +245,91 @@ def test_cdse_s3_gdal_environment_fails_closed_without_s3_keys(monkeypatch):
     monkeypatch.setattr(settings, "cdse_s3_secret_key", "")
     with pytest.raises(ProviderUnavailable, match="CDSE S3 credentials are required"):
         _gdal_env_options({}, ["s3://eodata/Sentinel-2/MSI/L2A/2025/12/29/B04_10m.jp2"])
+
+
+def test_stac_search_follows_bounded_same_origin_pagination(monkeypatch):
+    import httpx
+
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "sentinel2_stac_base_url", "https://stac.example.test/api/stac/v1")
+
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, **kwargs):
+            self.calls.append(("POST", url, kwargs.get("json")))
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"id": "scene-1"}],
+                    "links": [{"rel": "next", "href": "/api/stac/v1/search?page=2", "method": "GET"}],
+                },
+                request=httpx.Request("POST", url),
+            )
+
+        def get(self, url, **kwargs):
+            self.calls.append(("GET", url, None))
+            return httpx.Response(
+                200,
+                json={"features": [{"id": "scene-2"}], "links": []},
+                request=httpx.Request("GET", url),
+            )
+
+    client = Client()
+    provider = Sentinel2StacProvider(client=client)
+    items = provider.search_items(
+        geometry_geojson=fixture_field_geojson(),
+        start=datetime(2024, 7, 1, tzinfo=UTC),
+        end=datetime(2024, 7, 31, tzinfo=UTC),
+    )
+
+    assert [item["id"] for item in items] == ["scene-1", "scene-2"]
+    assert [call[0] for call in client.calls] == ["POST", "GET"]
+
+
+def test_stac_search_rejects_cross_origin_pagination(monkeypatch):
+    import httpx
+
+    from app.core.config import settings
+    from app.core.errors import ProviderRequestError
+
+    monkeypatch.setattr(settings, "sentinel2_stac_base_url", "https://stac.example.test/api/stac/v1")
+
+    class Client:
+        def post(self, url, **kwargs):
+            return httpx.Response(
+                200,
+                json={
+                    "features": [{"id": "scene-1"}],
+                    "links": [{"rel": "next", "href": "https://attacker.example/steal"}],
+                },
+                request=httpx.Request("POST", url),
+            )
+
+        def get(self, *args, **kwargs):
+            raise AssertionError("cross-origin pagination must never be requested")
+
+    provider = Sentinel2StacProvider(client=Client())
+    with pytest.raises(ProviderRequestError, match="untrusted URL"):
+        provider.search_items(
+            geometry_geojson=fixture_field_geojson(),
+            start=datetime(2024, 7, 1, tzinfo=UTC),
+            end=datetime(2024, 7, 31, tzinfo=UTC),
+        )
+
+
+def test_stac_search_rejects_invalid_cloud_cover_and_page_size():
+    from app.core.errors import ProviderRequestError
+
+    provider = Sentinel2StacProvider(client=object())
+    args = {
+        "geometry_geojson": fixture_field_geojson(),
+        "start": datetime(2024, 7, 1, tzinfo=UTC),
+        "end": datetime(2024, 7, 31, tzinfo=UTC),
+    }
+    with pytest.raises(ProviderRequestError, match="between 0 and 100"):
+        provider.search_items(**args, max_cloud_cover=101)
+    with pytest.raises(ProviderRequestError, match="positive integer"):
+        provider.search_items(**args, limit=0)
