@@ -63,7 +63,14 @@ def encode_records(records: list[Any], *, bundle: PrestoModelBundle, batch_size:
     to crop classes or probabilities; that requires an independently labelled
     Egyptian training/evaluation set and a separately versioned classifier.
     """
-    if not records or len(records) > 4096 or not 1 <= batch_size <= 128:
+    if (
+        not isinstance(records, list)
+        or not records
+        or len(records) > 4096
+        or isinstance(batch_size, bool)
+        or not isinstance(batch_size, int)
+        or not 1 <= batch_size <= 128
+    ):
         raise ValueError("Presto inference batch is outside the supported bound")
     try:
         import numpy as np
