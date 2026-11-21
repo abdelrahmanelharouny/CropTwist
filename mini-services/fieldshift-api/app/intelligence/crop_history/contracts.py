@@ -27,9 +27,23 @@ class MonthlyCropFeatures(BaseModel):
 
     @model_validator(mode="after")
     def require_evidence_for_values(self) -> "MonthlyCropFeatures":
-        if self.valid_observation_count == 0 and any(value is not None for value in self.values.values()):
+        allowed_presto_bands = {
+            "vv", "vh", "b02", "b03", "b04", "b05", "b06", "b07",
+            "b08", "b8a", "b11", "b12", "temperature_2m_k",
+            "total_precipitation_m", "elevation_m", "slope_degrees",
+        }
+        if set(self.presto_bands) - allowed_presto_bands:
+            raise ValueError("unknown Presto input band")
+        if self.valid_observation_count == 0 and (
+            any(value is not None for value in self.values.values())
+            or any(value is not None for value in self.presto_bands.values())
+            or self.dynamic_world_class is not None
+        ):
             raise ValueError("a month without valid observations cannot contain feature values")
-        if any(value is not None and not (-1e6 <= value <= 1e6) for value in self.values.values()):
+        if any(
+            value is not None and not (-1e6 <= value <= 1e6)
+            for value in [*self.values.values(), *self.presto_bands.values()]
+        ):
             raise ValueError("feature value is outside the supported numeric bound")
         return self
 
