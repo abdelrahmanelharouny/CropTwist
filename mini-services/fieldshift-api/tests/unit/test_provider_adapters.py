@@ -200,7 +200,7 @@ def test_failover_never_splices_after_provider_stream_emits_text():
 def test_provider_status_reports_unverified_configuration_without_secrets():
     statuses = get_provider_statuses()
     assert [row["name"] for row in statuses[:3]] == ["gemini", "groq", "openrouter"]
-    assert statuses[0]["model"] == "gemini-3.6-flash"
+    assert statuses[0]["model"] == "gemini-3.8-flash"
     assert statuses[1]["model"] == "openai/gpt-oss-120b"
     assert statuses[2]["model"] == "nvidia/nemotron-3.5-super-vl:free"
     serialized = json.dumps(statuses)
