@@ -38,11 +38,34 @@ class WaPORRasterWindow:
     raw_median: float | None
     unit: str | None
     scale_factor: float | None
+    offset: float | None
     period_code: str | None
     resolution_m: int
     crs: str
     source_url: str
     provider: str = "FAO WaPOR v3"
+
+
+def _read_raster_metadata(url: str) -> dict[str, Any]:
+    """Read lightweight GeoTIFF metadata without downloading the full raster."""
+    import rasterio
+
+    with rasterio.open(url) as dataset:
+        tags = {key.casefold(): value for key, value in dataset.tags(1).items()}
+        unit = dataset.units[0] if dataset.units else None
+        if not unit:
+            unit = tags.get("unit") or tags.get("units")
+        scale_raw = tags.get("scale_factor") or tags.get("scale")
+        offset_raw = tags.get("offset")
+        try:
+            scale = float(scale_raw) if scale_raw is not None else None
+        except (TypeError, ValueError):
+            scale = None
+        try:
+            offset = float(offset_raw) if offset_raw is not None else None
+        except (TypeError, ValueError):
+            offset = None
+        return {"unit": unit, "scale_factor": scale, "offset": offset, "nodata": dataset.nodata}
 
 
 class WaPORV3Client:
@@ -182,6 +205,7 @@ class WaPORV3Client:
         ):
             raise ValueError("raster must be a catalogue record with a trusted FAO COG URL")
         try:
+            raster_metadata = _read_raster_metadata(download_url)
             reading = read_scene_window(
                 assets={"wapor": download_url},
                 surfaces=("wapor",),
@@ -206,6 +230,12 @@ class WaPORV3Client:
         else:
             mean = median = None
         scale = raster.get("scale_factor")
+        if not isinstance(scale, (int, float)):
+            scale = raster_metadata.get("scale_factor")
+        offset = raster.get("offset")
+        if not isinstance(offset, (int, float)):
+            offset = raster_metadata.get("offset")
+        unit = raster.get("unit") if isinstance(raster.get("unit"), str) else raster_metadata.get("unit")
         return WaPORRasterWindow(
             mapset_code=code,
             raster_code=raster_code,
@@ -214,8 +244,9 @@ class WaPORV3Client:
             nodata_pixel_count=int(field_mask.sum() - values.size),
             raw_mean=mean,
             raw_median=median,
-            unit=raster.get("unit") if isinstance(raster.get("unit"), str) else None,
+            unit=unit if isinstance(unit, str) else None,
             scale_factor=float(scale) if isinstance(scale, (int, float)) else None,
+            offset=float(offset) if isinstance(offset, (int, float)) else None,
             period_code=raster.get("period_code") if isinstance(raster.get("period_code"), str) else None,
             resolution_m=product.resolution_m,
             crs=reading.crs,
