@@ -561,7 +561,7 @@ def test_validate_request_enforces_scene_cap():
 def test_hls_raster_exception_does_not_leak_signed_asset_url(monkeypatch):
     secret_url = "https://example.test/asset.tif?token=do-not-leak"
 
-    def fail_read(**kwargs):
+    def fail_read(*args, **kwargs):
         raise RuntimeError(f"failed to read {secret_url}")
 
     monkeypatch.setattr(hls_provider_module, "_load_scene_arrays", fail_read)
