@@ -1,7 +1,10 @@
 # Local multilingual embedding warmup
 
-The local FastEmbed model is loaded lazily and downloaded to the configured
-cache on first use. For predictable API latency, run this operator command
+The local FastEmbed model is the Qdrant quantized ONNX variant of
+`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384-D,
+~50 languages, 512-token truncation, Apache-2.0, approximately 0.22 GB in
+FastEmbed 0.7.4). It is loaded lazily and downloaded to the configured cache
+on first use. For predictable API latency, run this operator command
 from `mini-services/fieldshift-api` after setting
 `AI_KNOWLEDGE_EMBEDDING_ENABLED=true`:
 
