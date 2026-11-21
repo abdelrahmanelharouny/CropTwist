@@ -476,12 +476,13 @@ def search_knowledge(
         or not 1 <= max_candidates <= MAX_SEARCH_CANDIDATES
     ):
         raise KnowledgeError("retrieval limits are outside the supported bound")
-    if (
-        isinstance(min_similarity, bool)
-        or not isinstance(min_similarity, (int, float))
-        or not math.isfinite(float(min_similarity))
-        or not -1.0 <= min_similarity <= 1.0
-    ):
+    similarity_is_finite = False
+    if isinstance(min_similarity, (int, float)) and not isinstance(min_similarity, bool):
+        try:
+            similarity_is_finite = math.isfinite(float(min_similarity))
+        except (OverflowError, ValueError):
+            similarity_is_finite = False
+    if not similarity_is_finite or not -1.0 <= min_similarity <= 1.0:
         raise KnowledgeError("similarity threshold must be a finite number between -1 and 1")
     if (
         not isinstance(embedding_provider, str)
