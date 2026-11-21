@@ -82,7 +82,7 @@ def test_farm_split_seed_changes_assignment_without_changing_group_membership():
 
 
 
-@pytest.mark.parametrize("bad_value", [True, "30.1", float("nan"), float("inf"), 10**10000])
+@pytest.mark.parametrize("bad_value", [True, "30.1", float("nan"), float("inf"), 10**1000])
 def test_record_centroid_and_coverage_reject_coerced_or_non_finite_values(bad_value):
     with pytest.raises(ValidationError):
         CropHistoryRecord(
@@ -112,7 +112,7 @@ def test_record_centroid_and_coverage_reject_coerced_or_non_finite_values(bad_va
         )
 
 
-@pytest.mark.parametrize("bad_value", [True, "0.4", float("nan"), float("inf"), 10**10000])
+@pytest.mark.parametrize("bad_value", [True, "0.4", float("nan"), float("inf"), 10**1000])
 def test_monthly_feature_maps_reject_coerced_or_non_finite_values(bad_value):
     with pytest.raises(ValidationError):
         MonthlyCropFeatures(
