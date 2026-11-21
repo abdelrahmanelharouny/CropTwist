@@ -27,6 +27,13 @@ class MonthlyCropFeatures(BaseModel):
     dynamic_world_class: int | None = Field(default=None, ge=0, le=8)
     source_scene_ids: list[str] = Field(default_factory=list, max_length=100)
 
+    @field_validator("month", "year", "valid_observation_count", mode="before")
+    @classmethod
+    def require_integer_month_metadata(cls, value):
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("month, year and observation count must be integers")
+        return value
+
     @field_validator("values", "presto_bands", mode="before")
     @classmethod
     def require_finite_numeric_feature_maps(cls, value):
