@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from calendar import monthrange
+from time import monotonic
+from uuid import uuid4
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
@@ -322,3 +326,217 @@ class WaPORV3Client:
             asset_layout=raster_metadata.get("layout") if isinstance(raster_metadata.get("layout"), str) else None,
             overview_levels=tuple(raster_metadata.get("overview_levels") or ()),
         )
+
+
+# Canonical variables exposed by the Egypt Level-2 dekadal products. These
+# mappings are deliberately explicit: AETI is not reference ET0, and relative
+# soil moisture is not volumetric soil_moisture_surface.
+WAPOR_EGYPT_L2_VARIABLE_MAP = {
+    "actual_evapotranspiration_interception": "L2-AETI-D",
+    "evaporation": "L2-E-D",
+    "interception": "L2-I-D",
+    "transpiration": "L2-T-D",
+    "relative_soil_moisture": "L2-RSM-D",
+    "net_primary_productivity": "L2-NPP-D",
+}
+
+
+def _dekad_period(period_code: str) -> tuple[datetime, datetime]:
+    match = re.fullmatch(r"(\\d{4})-(\\d{2})-D([1-3])", period_code)
+    if not match:
+        raise ValueError("invalid WaPOR dekadal period code")
+    year, month, dekad = (int(value) for value in match.groups())
+    if not 1 <= month <= 12:
+        raise ValueError("invalid WaPOR month")
+    if dekad == 1:
+        first, last = 1, 10
+    elif dekad == 2:
+        first, last = 11, 20
+    else:
+        first, last = 21, monthrange(year, month)[1]
+    return (
+        datetime(year, month, first, tzinfo=UTC),
+        datetime(year, month, last, 23, 59, 59, 999999, tzinfo=UTC),
+    )
+
+
+class WaPORV3Provider:
+    """EnvironmentalDataProvider adapter for Egypt's WaPOR v3 L2 dekadal products."""
+
+    provider_code = "fao_wapor_v3"
+
+    def __init__(self, client: WaPORV3Client | None = None) -> None:
+        self.client = client or WaPORV3Client()
+
+    @staticmethod
+    def supported_variables() -> list[str]:
+        return sorted(WAPOR_EGYPT_L2_VARIABLE_MAP)
+
+    def fetch_observations(
+        self,
+        *,
+        area_of_interest: AreaOfInterest,
+        variables: list[str],
+        start: datetime,
+        end: datetime,
+        options: dict[str, Any] | None = None,
+    ) -> ProviderFetchResult:
+        validate_provider_request(variables, start, end)
+        if start.tzinfo is None or end.tzinfo is None:
+            raise InvalidDateRange("WaPOR requests require timezone-aware start/end timestamps.")
+        options = options or {}
+        country_code = str(options.get("country_code", "EGY")).strip().upper()
+        level = int(options.get("level", 2))
+        if country_code != "EGY" or level != 2:
+            raise UnsupportedVariable(
+                "The canonical WaPOR provider currently exposes only Egypt Level-2 dekadal products."
+            )
+        unknown = sorted(set(variables) - set(WAPOR_EGYPT_L2_VARIABLE_MAP))
+        if unknown:
+            raise UnsupportedVariable(
+                "Requested variables have no verified WaPOR Level-2 mapping.",
+                details=[{"field": "variables", "reason": ", ".join(unknown)}],
+            )
+
+        start_utc, end_utc = start.astimezone(UTC), end.astimezone(UTC)
+        observations: list[CanonicalObservation] = []
+        warnings: list[str] = []
+        rasters_seen = 0
+        products_used: list[str] = []
+        missing_count = 0
+        for variable in variables:
+            mapset_code = WAPOR_EGYPT_L2_VARIABLE_MAP[variable]
+            products_used.append(mapset_code)
+            try:
+                rasters = self.client.list_rasters(mapset_code)
+            except Exception as exc:  # noqa: BLE001 — never leak upstream URLs or response bodies
+                raise ProviderUnavailable(
+                    f"WaPOR catalogue discovery failed for product {mapset_code} ({type(exc).__name__}).",
+                    details=[{"product_code": mapset_code, "reason": type(exc).__name__}],
+                ) from exc
+            selected = []
+            for raster in rasters:
+                try:
+                    period_start, period_end = _dekad_period(raster["period_code"])
+                except (KeyError, ValueError):
+                    continue
+                if period_end < start_utc or period_start > end_utc:
+                    continue
+                selected.append((raster, period_start, period_end))
+            if not selected:
+                warnings.append(f"No WaPOR rasters found for {variable} in the requested date range.")
+                continue
+            for raster, period_start, period_end in selected:
+                rasters_seen += 1
+                try:
+                    window = self.client.read_field_window(
+                        mapset_code=mapset_code,
+                        raster=raster,
+                        geometry_geojson=area_of_interest.geometry_geojson,
+                        max_window_mb=float(options.get("max_window_mb", 128.0)),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    raise ProviderUnavailable(
+                        f"WaPOR field-window extraction failed for product {mapset_code} ({type(exc).__name__}).",
+                        details=[{"product_code": mapset_code, "raster_code": raster["code"], "reason": type(exc).__name__}],
+                    ) from exc
+                if window.valid_pixel_count > 0 and window.scaled_mean is None:
+                    raise ProviderUnavailable(
+                        f"WaPOR product {mapset_code} has no verified physical unit/scale metadata.",
+                        details=[{"product_code": mapset_code, "raster_code": raster["code"], "reason": "unresolved_unit_scale"}],
+                    )
+                is_missing = window.valid_pixel_count == 0
+                missing_count += int(is_missing)
+                value = None if is_missing else float(window.scaled_mean)
+                unit = window.unit
+                if not unit:
+                    raise ProviderUnavailable(
+                        f"WaPOR product {mapset_code} has no verified canonical unit.",
+                        details=[{"product_code": mapset_code, "raster_code": raster["code"], "reason": "missing_unit"}],
+                    )
+                total_pixels = window.valid_pixel_count + window.nodata_pixel_count
+                observations.append(CanonicalObservation(
+                    variable_code=variable,
+                    value=value,
+                    unit=unit,
+                    observed_at=period_end,
+                    period_start=period_start,
+                    period_end=period_end,
+                    time_support=TimeSupport.dekadal,
+                    spatial_support_type=SpatialSupportType.field_intersection,
+                    spatial_resolution_m=float(window.resolution_m),
+                    quality_status=QualityStatus.missing if is_missing else QualityStatus.valid,
+                    evidence_class=EvidenceClass.satellite_derived_estimate,
+                    is_synthetic=False,
+                    processing_version="wapor-v3",
+                    metadata={
+                        "mapset_code": mapset_code,
+                        "raster_code": window.raster_code,
+                        "raw_mean": window.raw_mean,
+                        "raw_median": window.raw_median,
+                        "scaled_mean": window.scaled_mean,
+                        "scaled_median": window.scaled_median,
+                        "scale_factor": window.scale_factor,
+                        "offset": window.offset,
+                        "valid_pixel_count": window.valid_pixel_count,
+                        "nodata_pixel_count": window.nodata_pixel_count,
+                        "valid_pixel_fraction": (window.valid_pixel_count / total_pixels) if total_pixels else 0.0,
+                        "asset_layout": window.asset_layout,
+                        "overview_levels": list(window.overview_levels),
+                        "license": window.license,
+                        "metadata_reference": window.metadata_reference,
+                    },
+                    quality_flags=([{"code": "no_valid_pixels", "message": "No valid WaPOR pixels intersect the field."}] if is_missing else []),
+                ))
+
+        provenance = SourceProvenance(
+            provider_code=self.provider_code,
+            provider_name="FAO WaPOR v3",
+            product_code="WaPOR v3 Level-2 dekadal water-productivity products",
+            product_version="3",
+            license_name="CC BY-SA 4.0",
+            license_url="https://creativecommons.org/licenses/by-sa/4.0/",
+            attribution_text="FAO WaPOR v3 data, licensed under CC BY-SA 4.0.",
+            documentation_url="https://www.fao.org/in-action/remote-sensing-for-water-productivity/wapor/en",
+            known_limitations=(
+                "Egypt Level-2 dekadal products at nominal 100 m resolution; satellite/model estimates, "
+                "not field measurements. Level-3 pilot products and Level-1 coarse products are not "
+                "included in this canonical adapter."
+            ),
+            retrieval_method="FAO GISMGR catalogue API + tiled GeoTIFF field-window read",
+        )
+        return ProviderFetchResult(
+            provider_code=self.provider_code,
+            provenance=provenance,
+            observations=observations,
+            warnings=warnings,
+            coverage={
+                "country_code": country_code,
+                "level": level,
+                "products": sorted(set(products_used)),
+                "rasters_seen": rasters_seen,
+                "observations": len(observations),
+                "missing_observations": missing_count,
+            },
+            provider_request_id=uuid4().hex,
+            raw_reference=API_ROOT,
+            input_record_count=rasters_seen,
+        )
+
+
+def wapor_v3_health_probe() -> dict[str, Any]:
+    """Short, best-effort public catalogue probe for the provider registry."""
+    started = monotonic()
+    try:
+        mapsets = WaPORV3Client(timeout_seconds=5.0).list_mapsets()
+        return {
+            "status": "ok" if mapsets else "degraded",
+            "latency_ms": int((monotonic() - started) * 1000),
+            "detail": f"FAO WaPOR v3 catalogue returned {len(mapsets)} mapsets",
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "unreachable",
+            "latency_ms": int((monotonic() - started) * 1000),
+            "detail": f"FAO WaPOR v3 catalogue unavailable ({type(exc).__name__})",
+        }
