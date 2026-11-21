@@ -132,11 +132,13 @@ def list_notifications(
     organization_id: uuid.UUID,
     unread_only: bool = False,
     category: str | None = None,
+    severity: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[Notification], int, int]:
     """Notifications visible to the principal in the org: org-scoped rows
-    plus rows addressed to this user. Unread count included."""
+    plus rows addressed to this user. Severity/category filters are applied
+    in SQL so pagination and total/unread counts describe the same result set."""
     from app.core.errors import Forbidden
 
     principal.require_member_of(organization_id)
@@ -148,6 +150,12 @@ def list_notifications(
     scope = Notification.user_id.is_(None) | (Notification.user_id == principal.id)
     if unread_only:
         conditions.append(Notification.read_at.is_(None))
+    if severity:
+        if severity not in SEVERITIES:
+            from app.core.errors import ValidationFailed
+
+            raise ValidationFailed(f"Unknown notification severity '{severity}'.")
+        conditions.append(Notification.severity == severity)
     if category:
         if category not in CATEGORIES:
             from app.core.errors import ValidationFailed
