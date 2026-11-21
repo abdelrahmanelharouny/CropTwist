@@ -12,6 +12,15 @@ ALLOWED_LABEL_SOURCES = frozenset({
 })
 
 
+def _is_finite_numeric(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        return False
+
+
 def validate_training_rows(rows: list[dict[str, Any]]) -> None:
     if not rows:
         raise ValueError("training dataset is empty")
@@ -47,20 +56,15 @@ def validate_training_rows(rows: list[dict[str, Any]]) -> None:
             raise ValueError("duplicate field-season records are not allowed")
         seen.add(key)
         raw_coverage = row["valid_pixel_coverage"]
-        if isinstance(raw_coverage, bool) or not isinstance(raw_coverage, (int, float)):
-            raise ValueError("valid_pixel_coverage must be numeric, not boolean")
+        if not _is_finite_numeric(raw_coverage):
+            raise ValueError("valid_pixel_coverage must be numeric, finite, and not boolean")
         coverage = float(raw_coverage)
         if not math.isfinite(coverage) or not 0.2 <= coverage <= 1.0:
             raise ValueError("valid_pixel_coverage must be finite and between 0.2 and 1.0")
         embedding = row.get("embedding")
         if not isinstance(embedding, (list, tuple)) or len(embedding) != EMBEDDING_DIM:
             raise ValueError(f"row {index} must contain a {EMBEDDING_DIM}-D Presto embedding")
-        if any(
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(float(value))
-            for value in embedding
-        ):
+        if any(not _is_finite_numeric(value) for value in embedding):
             raise ValueError(f"row {index} contains non-finite or non-numeric embedding values")
         regions.add(row["region_id"])
         classes.add(row["crop_code"])
