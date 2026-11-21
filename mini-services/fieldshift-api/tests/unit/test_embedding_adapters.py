@@ -7,7 +7,6 @@ from app.intelligence.config import ai_settings
 from app.intelligence.orchestration.embedding_adapters import (
     FastEmbedMultilingualE5Provider,
     MODEL_NAME,
-    MODEL_SHA256,
     verify_e5_artifact,
 )
 
