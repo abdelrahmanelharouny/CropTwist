@@ -45,8 +45,10 @@ OpenRouter.
 4. Check Ollama locally with `ollama list` and its local API. Do not expose
    port 11434 to the public internet. Do not place Ollama behind an unauthenticated
    public reverse proxy.
-5. Run the provider status endpoint and the explicit Ollama smoke probe only
-   after the local daemon and model are ready.
+5. Check the provider status endpoint, then perform a separate harmless
+   non-sensitive smoke request on the target host. Record the served model,
+   latency and token counts. This real-runtime check is manual and is not
+   performed by the normal mock-only CI suite.
 
 ## Runtime contract
 
