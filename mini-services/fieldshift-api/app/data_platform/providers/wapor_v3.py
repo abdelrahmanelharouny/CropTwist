@@ -56,8 +56,10 @@ def _read_raster_metadata(url: str) -> dict[str, Any]:
     with rasterio.open(url) as dataset:
         tags = {key.casefold(): value for key, value in dataset.tags(1).items()}
         unit = dataset.units[0] if dataset.units else None
-        if not unit:
+        if not unit or str(unit).strip().casefold() in {"1", "unitless", "unknown"}:
             unit = tags.get("unit") or tags.get("units")
+        if isinstance(unit, str) and unit.strip().casefold() in {"1", "unitless", "unknown"}:
+            unit = None
         scale_raw = tags.get("scale_factor") or tags.get("scale")
         offset_raw = tags.get("offset")
         try:
