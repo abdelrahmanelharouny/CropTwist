@@ -141,3 +141,18 @@ def test_dynamic_world_class_rejects_boolean_and_numeric_string():
                 valid_observation_count=1,
                 dynamic_world_class=bad_value,
             )
+
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("month", True), ("month", "1"), ("year", "2025"), ("valid_observation_count", True)],
+)
+def test_monthly_record_rejects_coerced_integer_metadata(field, value):
+    with pytest.raises(ValidationError):
+        MonthlyCropFeatures(
+            month=value if field == "month" else 1,
+            year=value if field == "year" else 2025,
+            values={},
+            valid_observation_count=value if field == "valid_observation_count" else 0,
+        )
