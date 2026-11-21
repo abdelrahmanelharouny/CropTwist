@@ -417,8 +417,6 @@ class WaPORV3Provider:
                 details=[{"field": "variables", "reason": ", ".join(unknown)}],
             )
 
-        start_utc = start.replace(tzinfo=UTC) if start.tzinfo is None else start.astimezone(UTC)
-        end_utc = end.replace(tzinfo=UTC) if end.tzinfo is None else end.astimezone(UTC)
         observations: list[CanonicalObservation] = []
         warnings: list[str] = []
         rasters_seen = 0
