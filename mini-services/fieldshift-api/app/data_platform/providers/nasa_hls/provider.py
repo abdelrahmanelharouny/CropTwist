@@ -553,8 +553,8 @@ def _scene_observations(
             "qa_nodata_pixels": int((~valid_qa).sum()),
             "aot_level_counts": {
                 "climatology": int(((aot_level == 0) & valid_qa).sum()),
-                "medium": int(((aot_level == 1) & valid_qa).sum()),
-                "low": int(((aot_level == 2) & valid_qa).sum()),
+                "low": int(((aot_level == 1) & valid_qa).sum()),
+                "medium": int(((aot_level == 2) & valid_qa).sum()),
                 "high": int(((aot_level == 3) & valid_qa).sum()),
             },
         }
