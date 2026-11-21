@@ -82,6 +82,10 @@ class EmbeddingProviderRegistry:
 
 embedding_provider_registry = EmbeddingProviderRegistry()
 
+from app.intelligence.orchestration.embedding_adapters import register_local_embedding_provider
+
+register_local_embedding_provider(embedding_provider_registry)
+
 
 @dataclass(frozen=True)
 class KnowledgePassage:
@@ -388,6 +392,12 @@ async def embed_query(query: str, *, provider: EmbeddingProvider) -> list[float]
     if not isinstance(query, str) or not query.strip() or len(query) > 2_000:
         raise KnowledgeError("query text is outside the supported bound")
     try:
+        query_embedder = getattr(provider, "embed_query", None)
+        if callable(query_embedder):
+            vector = await asyncio.wait_for(
+                query_embedder(query.strip()), timeout=EMBEDDING_PROVIDER_TIMEOUT_SECONDS
+            )
+            return validate_embedding(vector)
         vectors = await asyncio.wait_for(
             provider.embed([query.strip()]), timeout=EMBEDDING_PROVIDER_TIMEOUT_SECONDS
         )

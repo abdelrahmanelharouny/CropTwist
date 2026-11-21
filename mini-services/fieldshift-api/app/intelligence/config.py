@@ -66,6 +66,9 @@ class AISettings(BaseSettings):
     openrouter_allow_field_data: bool = False
     ai_knowledge_allow_documents_to_embedding_provider: bool = False
     ai_knowledge_allow_queries_to_embedding_provider: bool = False
+    ai_knowledge_embedding_enabled: bool = False
+    ai_knowledge_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    ai_knowledge_embedding_cache_dir: str = ""
 
     # Retrieval and feedback operational limits. No default corpus is bundled.
     ai_knowledge_max_document_chars: int = Field(default=200_000, ge=1000, le=2_000_000)
