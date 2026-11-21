@@ -347,7 +347,7 @@ def test_fmask_masks_cloud_pixels(monkeypatch):
             "scene_id": scene_id,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
         }
     }
     result = provider.fetch_observations(
@@ -378,7 +378,7 @@ def test_all_cloud_scene_yields_missing_not_zero(monkeypatch):
             "scene_id": scene_id,
             "collection": "HLSL30",
             "acquired_at": "2024-07-07T16:45:37+00:00",
-            "assets": {"red": "r.tif", "nir": "n.tif", "fmask": "f.tif"},
+            "assets": {"red": f"{LP}/test.red.tif", "nir": f"{LP}/test.nir.tif", "fmask": f"{LP}/test.Fmask.tif"},
         }
     }
     result = provider.fetch_observations(
@@ -418,7 +418,7 @@ def test_per_scene_degradation_degrades_only_that_scene(monkeypatch):
             "scene_id": bad,
             "collection": "HLSL30",
             "acquired_at": "2024-07-09T16:45:38+00:00",
-            "assets": {"blue": "b.tif"},  # red+nir missing -> scene skipped
+            "assets": {"blue": f"{LP}/test.blue.tif"},  # red+nir missing -> scene skipped
         },
     }
     result = provider.fetch_observations(
@@ -587,3 +587,43 @@ def test_hls_raster_exception_does_not_leak_signed_asset_url(monkeypatch):
     assert any("RuntimeError" in warning for warning in result.warnings)
     assert secret_url not in str(result.warnings)
     assert "do-not-leak" not in str(result.warnings)
+
+def test_hls_scene_record_rejects_untrusted_asset_urls():
+    from app.core.errors import ProviderRequestError
+
+    base = {
+        "scene_id": "scene-1",
+        "collection": "HLSL30",
+        "acquired_at": "2024-07-07T16:45:37+00:00",
+        "assets": {},
+    }
+    invalid_hrefs = [
+        "http://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/a.tif",
+        "https://evil.example/lp-prod-protected/a.tif",
+        "https://user:password@data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/a.tif",
+        "https://data.lpdaac.earthdatacloud.nasa.gov:8443/lp-prod-protected/a.tif",
+        "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/a.tif?token=secret",
+        "https://data.lpdaac.earthdatacloud.nasa.gov/other-bucket/a.tif",
+    ]
+    for href in invalid_hrefs:
+        record = {**base, "assets": {"red": href}}
+        with pytest.raises(ProviderRequestError, match="untrusted red asset URL"):
+            hls_provider_module._validate_scene_record("scene-1", record)
+
+
+def test_hls_scene_record_rejects_mismatched_identity_and_invalid_cloud_cover():
+    from app.core.errors import ProviderRequestError
+
+    record = {
+        "scene_id": "different-scene",
+        "collection": "HLSL30",
+        "acquired_at": "2024-07-07T16:45:37+00:00",
+        "assets": {},
+    }
+    with pytest.raises(ProviderRequestError, match="mismatched scene identifier"):
+        hls_provider_module._validate_scene_record("scene-1", record)
+
+    record["scene_id"] = "scene-1"
+    record["cloud_cover_pct"] = float("nan")
+    with pytest.raises(ProviderRequestError, match="invalid cloud-cover"):
+        hls_provider_module._validate_scene_record("scene-1", record)
