@@ -3,7 +3,7 @@ name: M2 Clean-room Release
 on:
   push:
     branches:
-      - work/m2-clean-room-release
+      - work/m2-clean-room-release-current-main
   pull_request:
     branches: [main]
   workflow_dispatch:
