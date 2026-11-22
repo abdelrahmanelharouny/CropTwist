@@ -139,7 +139,7 @@ def main() -> int:
         }
         if window.valid_pixel_count < 1:
             failures.append("WaPOR raster window contained no valid pixels")
-        if window.crs != "EPSG:4326" and not window.crs:
+        if not window.crs:
             failures.append("WaPOR raster CRS metadata is missing")
         if window.resolution_m != 100:
             failures.append("WaPOR Egypt L2 resolution did not match the 100 m product spec")
