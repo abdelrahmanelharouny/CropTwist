@@ -182,3 +182,88 @@ async def evaluate_embedding_provider(
     result["provider"] = provider.name
     result["model"] = provider.model
     return result
+
+
+def evaluate_stratified_rankings(
+    *,
+    query_ids: list[str],
+    document_ids: list[str],
+    rankings: dict[str, list[str]],
+    relevant_document_ids: dict[str, set[str]],
+    query_languages: dict[str, str],
+    required_groups: tuple[str, ...] = ("ar", "en"),
+    ks: tuple[int, ...] = (1, 3, 5),
+) -> dict[str, Any]:
+    """Evaluate retrieval overall and separately for Arabic/English query groups.
+
+    Language labels may be BCP-47 variants (for example ar-EG and en-GB);
+    they are normalized to their primary language subtag. Required groups
+    are fail-closed: aggregate scores are not returned when a required
+    language has no judged queries.
+    """
+    if (
+        not isinstance(query_ids, list)
+        or not query_ids
+        or any(not isinstance(qid, str) or not qid.strip() for qid in query_ids)
+        or len(set(query_ids)) != len(query_ids)
+    ):
+        raise ValueError("benchmark query IDs must be non-empty unique strings")
+    if not isinstance(query_languages, dict):
+        raise ValueError("query language labels must be an object")
+    if set(query_ids) - set(query_languages):
+        raise ValueError("every benchmark query requires a language label")
+    if any(
+        not isinstance(query_languages[qid], str)
+        or not query_languages[qid].strip()
+        or not query_languages[qid].split("-", 1)[0].isalpha()
+        for qid in query_ids
+    ):
+        raise ValueError("every query language must be a non-empty BCP-47-like tag")
+    if (
+        not isinstance(required_groups, tuple)
+        or not required_groups
+        or any(not isinstance(group, str) or not group.strip() for group in required_groups)
+    ):
+        raise ValueError("required language groups must be unique non-empty strings")
+    normalized_required = tuple(group.strip().lower().split("-", 1)[0] for group in required_groups)
+    if any(not group or not group.isalpha() for group in normalized_required):
+        raise ValueError("required language groups must be unique non-empty strings")
+    if len(set(normalized_required)) != len(normalized_required):
+        raise ValueError("required language groups must be unique non-empty strings")
+
+    normalized = {
+        qid: query_languages[qid].strip().lower().split("-", 1)[0]
+        for qid in query_ids
+    }
+    present = set(normalized.values())
+    missing = sorted(set(normalized_required) - present)
+    if missing:
+        raise ValueError(f"benchmark is missing required language groups: {', '.join(missing)}")
+
+    overall = evaluate_rankings(
+        query_ids=query_ids,
+        document_ids=document_ids,
+        rankings=rankings,
+        relevant_document_ids=relevant_document_ids,
+        ks=ks,
+    )
+    by_language: dict[str, Any] = {}
+    for group in sorted(present):
+        group_ids = [qid for qid in query_ids if normalized[qid] == group]
+        by_language[group] = evaluate_rankings(
+            query_ids=group_ids,
+            document_ids=document_ids,
+            rankings=rankings,
+            relevant_document_ids=relevant_document_ids,
+            ks=ks,
+        )
+    return {
+        "query_count": len(query_ids),
+        "required_language_groups": list(normalized_required),
+        "language_query_counts": {
+            group: sum(1 for language in normalized.values() if language == group)
+            for group in sorted(present)
+        },
+        "overall": overall,
+        "by_language": by_language,
+    }
