@@ -12,7 +12,9 @@ from typing import Any
 
 from app.intelligence.orchestration.provider import ProviderGeneration, provider_registry
 
-PROBE_TIMEOUT_SECONDS = 20
+# Allow the fixed probe to outlive the provider's bounded retry budget.
+# Defaults: 25s/request, one retry, <=2s backoff, plus scheduling margin.
+PROBE_TIMEOUT_SECONDS = 60
 
 _PROBE_MESSAGES = [
     {"role": "system", "content": "You are a connectivity probe. Do not reveal secrets."},
