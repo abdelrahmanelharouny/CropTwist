@@ -394,7 +394,7 @@ class NasaHlsProvider:
     # ----------------------------------------------------------------- auth
     def _earthdata_auth(self) -> dict[str, str]:
         """NASA Earthdata Login credential resolution (settings only)."""
-        token = settings.earthdata_bearer_token
+        token = _normalize_earthdata_bearer_token(settings.earthdata_bearer_token)
         if token:
             return {"bearer_token": token}
         if settings.earthdata_username and settings.earthdata_password:
@@ -431,6 +431,18 @@ class NasaHlsProvider:
 
 
 # ------------------------------------------------------------------ helpers
+
+
+
+
+def _normalize_earthdata_bearer_token(value: str | None) -> str | None:
+    """Accept either a raw EDL token or a copied 'Bearer <token>' value."""
+    if not isinstance(value, str):
+        return None
+    token = value.strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    return token or None
 
 
 def _safe_http_status_from_exception(exc: Exception) -> int | None:
