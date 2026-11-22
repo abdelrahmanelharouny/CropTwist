@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, AsyncIterator, Callable
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -794,8 +795,9 @@ class _OpenAICompatibleProvider(_HTTPProvider):
         schema: dict[str, Any] | None,
         stream: bool,
     ) -> dict[str, Any]:
-        if not messages or any(
-            message.get("role") not in ("system", "user", "assistant")
+        if not isinstance(messages, list) or not messages or any(
+            not isinstance(message, dict)
+            or message.get("role") not in ("system", "user", "assistant")
             or not isinstance(message.get("content"), str)
             for message in messages
         ):
@@ -887,6 +889,123 @@ class _OpenAICompatibleProvider(_HTTPProvider):
                 finish_reason=finish or None,
             ))
         return result
+
+
+class OllamaProvider(_HTTPProvider):
+    """Loopback-only Ollama adapter for private field/farmer prompts."""
+
+    name = "ollama"
+    capabilities = ProviderCapabilities(
+        text_generation=True,
+        native_structured_output=True,
+        tool_calling=False,
+        streaming=False,
+        token_usage_reporting=True,
+        structured_output_mode="native_json_schema",
+        privacy_note="Loopback-only Ollama inference; external fallback remains blocked unless explicitly approved.",
+    )
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        num_ctx: int,
+        keep_alive: str,
+        **kwargs: Any,
+    ) -> None:
+        kwargs.pop("api_key", None)
+        super().__init__(api_key="", **kwargs)
+        self.base_url = base_url.rstrip("/") + "/api/chat"
+        self.num_ctx = num_ctx
+        self.keep_alive = keep_alive
+
+    @property
+    def configured(self) -> bool:
+        parsed = urlsplit(self.base_url)
+        return (
+            ai_settings.llm_enabled
+            and ai_settings.ollama_enabled
+            and parsed.scheme == "http"
+            and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        )
+
+    def _auth_headers(self) -> dict[str, str]:
+        # Ollama's local API does not require a bearer token.
+        return {}
+
+    def _endpoint(self, *, stream: bool) -> str:
+        # Native /api/chat uses NDJSON streaming, not SSE. Keep this adapter
+        # non-streaming so complete outputs pass through the same validators.
+        return self.base_url
+
+    def _payload(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None,
+        max_tokens: int | None,
+        schema: dict[str, Any] | None,
+        stream: bool,
+    ) -> dict[str, Any]:
+        if not isinstance(messages, list) or not messages or any(
+            not isinstance(message, dict)
+            or message.get("role") not in ("system", "user", "assistant")
+            or not isinstance(message.get("content"), str)
+            for message in messages
+        ):
+            raise ProviderFailure("provider_invalid_message_contract", False)
+        options: dict[str, Any] = {"num_ctx": self.num_ctx}
+        if temperature is not None:
+            options["temperature"] = temperature
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "keep_alive": self.keep_alive,
+            "options": options,
+        }
+        if schema is not None:
+            payload["format"] = schema
+        return payload
+
+    def _parse_response(self, body: dict[str, Any]) -> ProviderGeneration:
+        message = body.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise ProviderFailure("provider_empty_response", False)
+        if body.get("done") is not True:
+            raise ProviderFailure("provider_incomplete_response", False)
+        done_reason = body.get("done_reason")
+        if done_reason == "length":
+            raise ProviderFailure("provider_output_truncated", False)
+        if done_reason not in (None, "stop"):
+            raise ProviderFailure("provider_incomplete_response", False)
+        return ProviderGeneration(
+            content=content,
+            provider=self.name,
+            model=body.get("model") if isinstance(body.get("model"), str) else self.model,
+            input_tokens=_nonnegative_int(body.get("prompt_eval_count")),
+            output_tokens=_nonnegative_int(body.get("eval_count")),
+        )
+
+    def _parse_stream_event(self, body: dict[str, Any]) -> list[ProviderStreamEvent]:
+        raise ProviderCapabilityUnavailable("Ollama native NDJSON streaming is intentionally disabled.")
+
+    async def _unsupported_stream(self) -> AsyncIterator[ProviderStreamEvent]:
+        raise ProviderCapabilityUnavailable("Ollama native NDJSON streaming is intentionally disabled.")
+        yield ProviderStreamEvent()  # pragma: no cover
+
+    def stream(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        request_id: str | None = None,
+    ) -> AsyncIterator[ProviderStreamEvent]:
+        return self._unsupported_stream()
 
 
 class GroqProvider(_OpenAICompatibleProvider):
@@ -1672,6 +1791,13 @@ def _build_kwargs(settings: AISettings) -> dict[str, Any]:
 def register_default_providers(registry: ProviderRegistry) -> None:
     settings = ai_settings
     common = _build_kwargs(settings)
+    registry.register(OllamaProvider(
+        base_url=settings.ollama_base_url,
+        model=settings.ollama_model,
+        num_ctx=settings.ollama_num_ctx,
+        keep_alive=settings.ollama_keep_alive,
+        **common,
+    ))
     registry.register(GeminiProvider(
         api_key=_secret_value(settings.gemini_api_key),
         model=settings.gemini_model,
@@ -1690,6 +1816,13 @@ def register_default_providers(registry: ProviderRegistry) -> None:
 
 
 def _allowed_for_sensitive_data(name: str) -> bool:
+    if name == "ollama":
+        parsed = urlsplit(ai_settings.ollama_base_url)
+        return (
+            ai_settings.ollama_enabled
+            and parsed.scheme == "http"
+            and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        )
     # A loopback HTTP hop is not proof of local inference. The legacy Bun
     # bridge delegates to an SDK whose upstream completion endpoint is configured
     # outside this HTTP hop; loopback does not prove local prompt processing.
