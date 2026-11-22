@@ -105,9 +105,9 @@ def criterion_soil_health(
     scores: list[float] = []
     missing: list[str] = []
     sub_specs = [
-        ("root_depth", lambda c, country: _bounded(c.numeric_trait("root_depth_effective_m", country), 0.3, 1.8),
+        ("root_depth", lambda c, country: _bounded(c.conservative_numeric_trait("root_depth_effective_m", country, direction="maximize"), 0.3, 1.8),
          "trait root_depth_effective_m (FAO-56 Table 22)"),
-        ("n_fixation_capacity", lambda c, country: _bounded(c.numeric_trait("n_fixation_capacity_kg_ha", country), 0, 200),
+        ("n_fixation_capacity", lambda c, country: _bounded(c.conservative_numeric_trait("n_fixation_capacity_kg_ha", country, direction="maximize"), 0, 200),
          "trait n_fixation_capacity_kg_ha (Herridge et al. 2008)"),
     ]
     for season, crop_code in _assigned(problem, assignment):
@@ -152,8 +152,10 @@ def criterion_soil_health(
         normalized=None,
         evaluable=True,
         missing_evidence=tuple(missing),
-        derivation="Mean of sourced numeric soil-health indicators per season "
-        "(root depth and N-fixation capacity).",
+        derivation="Mean of sourced soil-health indicators per season (root depth "
+        "and N-fixation capacity). Complete interval-valued traits use the "
+        "conservative lower bound for maximized benefits; point values are used "
+        "unchanged and interval midpoints are never invented.",
         source_refs=(
             _refs_for_traits(problem, assignment, "root_depth_effective_m")
             + _refs_for_traits(problem, assignment, "n_fixation_capacity_kg_ha")

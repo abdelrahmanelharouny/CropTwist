@@ -3,6 +3,8 @@
 from dataclasses import replace
 from datetime import date
 
+import pytest
+
 from tests.unit.test_rotation_core import (
     SUMMER,
     _crop,
@@ -253,3 +255,157 @@ def test_per_season_soft_scores_do_not_relax_confirmed_hard_constraints():
     solution = optimize_strategy(problem, "water_only", profile)
     assignment = dict(solution.assignment)
     assert not (assignment[SUMMER.label] == "barley" and assignment[SECOND.label] == "barley")
+
+
+def test_interval_valued_soil_traits_use_conservative_lower_bounds_consistently():
+    from app.rotation.problem import TraitValue
+    from app.rotation.optimizer import _per_season_scores
+    from app.rotation.objectives import criterion_soil_health
+
+    problem = _crossing_problem()
+    barley = problem.knowledge.crops["barley"]
+    wheat = problem.knowledge.crops["wheat"]
+
+    def interval(code, low, high, source):
+        return TraitValue(
+            trait_code=code,
+            value_numeric=None,
+            value_text=None,
+            value_low=low,
+            value_high=high,
+            unit="test-unit",
+            region_code=None,
+            evidence_class="published_reference",
+            confidence="moderate",
+            validation_status="reference",
+            source_key=source,
+            citation_text=f"Source {source}",
+            pack_code="kp",
+            pack_version="kp-test-1.0",
+        )
+
+    barley.traits["root_depth_effective_m"] = interval(
+        "root_depth_effective_m", 0.4, 1.2, "barley-root"
+    )
+    barley.traits["n_fixation_capacity_kg_ha"] = interval(
+        "n_fixation_capacity_kg_ha", 10.0, 60.0, "barley-n"
+    )
+    wheat.traits["root_depth_effective_m"] = interval(
+        "root_depth_effective_m", 1.0, 1.4, "wheat-root"
+    )
+    wheat.traits["n_fixation_capacity_kg_ha"] = interval(
+        "n_fixation_capacity_kg_ha", 40.0, 80.0, "wheat-n"
+    )
+
+    scores, skipped = _per_season_scores(
+        problem,
+        {SUMMER.label: ["barley", "wheat"], SECOND.label: ["barley", "wheat"]},
+    )
+    soil = scores["soil_health_index"]
+    assert soil["barley"] == pytest.approx(
+        ((0.4 - 0.3) / (1.8 - 0.3) + 10.0 / 200.0) / 2
+    )
+    assert soil["wheat"] == pytest.approx(
+        ((1.0 - 0.3) / (1.8 - 0.3) + 40.0 / 200.0) / 2
+    )
+    assert "soil_health_index" not in skipped
+
+    result = criterion_soil_health(
+        problem, {SUMMER.label: "barley", SECOND.label: "barley"}
+    )
+    assert result.evaluable
+    assert result.raw_value == pytest.approx(soil["barley"], abs=1e-4)  # objective output is rounded to 4 decimals
+    assert "conservative lower bound" in result.derivation
+    assert "barley-root" in {ref["source_key"] for ref in result.source_refs}
+
+
+def test_point_values_take_precedence_over_interval_bounds_and_invalid_intervals_fail_closed():
+    from app.rotation.problem import TraitValue
+
+    crop = _crossing_problem().knowledge.crops["barley"]
+    crop.traits["point_trait"] = TraitValue(
+        trait_code="point_trait", value_numeric=1.25, value_text=None,
+        value_low=0.8, value_high=1.8, unit="m", region_code=None,
+        evidence_class="published_reference", confidence="high",
+        validation_status="reference", source_key="point", citation_text="Point source",
+        pack_code="kp", pack_version="kp-test-1.0",
+    )
+    crop.traits["bad_interval"] = TraitValue(
+        trait_code="bad_interval", value_numeric=None, value_text=None,
+        value_low=2.0, value_high=1.0, unit="m", region_code=None,
+        evidence_class="published_reference", confidence="low",
+        validation_status="reference", source_key="bad", citation_text="Bad interval",
+        pack_code="kp", pack_version="kp-test-1.0",
+    )
+    assert crop.numeric_trait_bounds("point_trait") == (1.25, 1.25)
+    assert crop.conservative_numeric_trait("point_trait") == 1.25
+    assert crop.numeric_trait_bounds("bad_interval") is None
+    assert crop.conservative_numeric_trait("bad_interval") is None
+
+
+
+def test_interval_trait_resolution_prefers_exact_regional_value_over_global():
+    from app.rotation.problem import TraitValue
+
+    crop = _crossing_problem().knowledge.crops["barley"]
+
+    def trait(region, low, high, source):
+        return TraitValue(
+            trait_code="root_depth_effective_m",
+            value_numeric=None,
+            value_text=None,
+            value_low=low,
+            value_high=high,
+            unit="m",
+            region_code=region,
+            evidence_class="published_reference",
+            confidence="moderate",
+            validation_status="reference",
+            source_key=source,
+            citation_text=source,
+            pack_code="kp",
+            pack_version="kp-test-1.0",
+        )
+
+    crop.traits["root_depth_effective_m"] = trait(None, 0.5, 1.0, "global")
+    crop.traits["root_depth_effective_m@EG"] = trait("EG", 1.1, 1.4, "egypt")
+    assert crop.numeric_trait_bounds("root_depth_effective_m", "EG") == (1.1, 1.4)
+    assert crop.conservative_numeric_trait(
+        "root_depth_effective_m", "EG", direction="maximize"
+    ) == 1.1
+    assert crop.numeric_trait_bounds("root_depth_effective_m", "US") == (0.5, 1.0)
+
+
+
+def test_numeric_trait_bounds_reject_boolean_point_and_interval_values():
+    from app.rotation.problem import TraitValue
+
+    crop = _crossing_problem().knowledge.crops["barley"]
+
+    def trait(code, point=None, low=None, high=None):
+        return TraitValue(
+            trait_code=code,
+            value_numeric=point,
+            value_text=None,
+            value_low=low,
+            value_high=high,
+            unit="m",
+            region_code=None,
+            evidence_class="published_reference",
+            confidence="low",
+            validation_status="reference",
+            source_key=f"source-{code}",
+            citation_text=f"Source {code}",
+            pack_code="kp",
+            pack_version="kp-test-1.0",
+        )
+
+    crop.traits["boolean_point"] = trait("boolean_point", point=True)
+    crop.traits["boolean_low"] = trait("boolean_low", low=True, high=1.5)
+    crop.traits["boolean_high"] = trait("boolean_high", low=0.5, high=False)
+
+    assert crop.numeric_trait("boolean_point") is None
+    assert crop.numeric_trait_bounds("boolean_point") is None
+    assert crop.numeric_trait_bounds("boolean_low") is None
+    assert crop.numeric_trait_bounds("boolean_high") is None
+    assert crop.conservative_numeric_trait("boolean_point") is None
