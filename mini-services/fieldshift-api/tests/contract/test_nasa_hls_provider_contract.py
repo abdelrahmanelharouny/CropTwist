@@ -87,6 +87,20 @@ def make_client(pages, calls=None):
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
+
+
+def test_nasa_hls_extracts_only_numeric_http_status_from_gdal_error():
+    assert hls_provider_module._safe_http_status_from_exception(
+        RuntimeError("HTTP response code: 403 while reading a protected asset")
+    ) == 403
+    assert hls_provider_module._safe_http_status_from_exception(
+        RuntimeError("HTTP status code 429; request failed")
+    ) == 429
+    assert hls_provider_module._safe_http_status_from_exception(
+        RuntimeError("request failed with secret_token_123 and no status")
+    ) is None
+
+
 def test_provider_satisfies_platform_contract():
     provider = NasaHlsProvider()
     assert isinstance(provider, EnvironmentalDataProvider)
