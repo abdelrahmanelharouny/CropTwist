@@ -6,7 +6,7 @@ FastAPI backend for **CropTwist**, a global agriculture decision-intelligence pl
 
 ## Architecture at a glance
 
-- **Stack:** FastAPI + SQLAlchemy 2 (GeoAlchemy2) on **PostgreSQL 16 + PostGIS 3.5**, pydantic-settings configuration, Alembic migrations (current head `0023_p07_field_reports`), and uvicorn.
+- **Stack:** FastAPI + SQLAlchemy 2 (GeoAlchemy2) on **PostgreSQL 16 + PostGIS 3.5**, pydantic-settings configuration, Alembic migrations (current head `0029_durable_artifacts`), and uvicorn.
 - **Surface:** versioned domain routers mounted under `/api/v1`, backed by SQLAlchemy models across core, AI, P2, and P3 modules. Use the current model/migration inventory rather than older endpoint/table counts.
 - **Determinism:** the rotation optimizer is OR-Tools CP-SAT with `num_search_workers=1` and a recorded seed (identical inputs → identical plans); scenario executions, sensitivity analyses, robust runs and decision documents are checksummed, immutable, replayable artifacts with `/verify` endpoints.
 - **Frontend:** Next.js 16 App Router app at the repository root, served on port 3000, calling the API via relative `/api/v1` paths (Caddy gateway `XTransformPort=3030`, or the `next.config.ts` rewrite fallback).
@@ -27,7 +27,7 @@ FastAPI backend for **CropTwist**, a global agriculture decision-intelligence pl
 | Soil intelligence | `soil.py` | Field management | `management.py` |
 | Health | `health.py` | | |
 
-External data code includes the Open-Meteo historical archive (ERA5/ERA5-Land reanalysis), optional ISRIC SoilGrids WCS, operator-upload CHIRPS GeoTIFF extraction, NASA HLS discovery and Earthdata-gated asset reads, and explicitly labelled synthetic fixtures. Current live provider readiness was not established by the repository audit; HLS contract tests use mocked transport, and the direct HLS acquisition path has known Fmask/CRS/windowing gaps. Weather forecasts and climate projections are not connected. Every response carries an `x-request-id` correlation header.
+External data code includes the Open-Meteo historical archive (ERA5/ERA5-Land reanalysis), optional ISRIC SoilGrids WCS, operator-upload CHIRPS GeoTIFF extraction, NASA HLS discovery and Earthdata-gated asset reads, and explicitly labelled synthetic fixtures. NASA HLS v2 and Copernicus Sentinel-2 L2A adapters include CRS-aware field-window processing and their respective quality masks (HLS Fmask / Sentinel-2 SCL); WaPOR v3 provides bounded Egypt Level-2 dekadal raster access. Contract tests use mocked catalogue/transport paths and synthetic raster fixtures. No credentialed protected HLS/CDSE asset read or live Egypt WaPOR COG-window acceptance is recorded yet. Weather forecasts and climate projections remain unavailable pending a validated source and method. Every response carries an `x-request-id` correlation header.
 
 ## Quickstart (local, sandbox convention)
 
@@ -147,7 +147,7 @@ mini-services/fieldshift-api/
 │   ├── robust_rotation/     # M7.5 shared-plan maximin optimization
 │   ├── decision/            # M7.6 decision comparison documents
 │   └── digital_twin/        # M7.7 traceable twin assembly & validation
-├── migrations/versions/     # additive Alembic revisions through 0023_p07_field_reports
+├── migrations/versions/     # additive Alembic revisions through 0029_durable_artifacts
 ├── scripts/
 │   ├── run_dev.py           # ensure PG → migrate → uvicorn --reload
 │   ├── ensure_db.py         # boots the user-space PostgreSQL cluster
