@@ -443,6 +443,24 @@ def _safe_http_status_from_exception(exc: Exception) -> int | None:
     return status_code if 100 <= status_code <= 599 else None
 
 
+
+
+def _required_surfaces_for_indices(variables: list[str]) -> list[str]:
+    """Read only sensor surfaces required by the requested indices."""
+    from app.vegetation.indices import INDEX_REQUIREMENTS
+
+    required = {
+        surface
+        for variable in variables
+        for surface in INDEX_REQUIREMENTS.get(variable, ())
+    }
+    return [
+        surface
+        for surface in ("red", "nir", "blue", "green", "swir1", "swir2")
+        if surface in required
+    ]
+
+
 def hls_catalog_url() -> str | None:
     return settings.nasa_hls_stac_base_url.rstrip("/") + hls_catalog.STAC_SEARCH_PATH
 
@@ -674,7 +692,11 @@ def _scene_observations(
     }
 
     try:
-        surfaces = [s for s in ("red", "nir", "blue", "green", "swir1", "swir2") if s in assets]
+        surfaces = [
+            surface
+            for surface in _required_surfaces_for_indices(variables)
+            if surface in assets
+        ]
         band_arrays, context = _load_scene_arrays(assets, surfaces, gdal_env, geometry_geojson)
         fmask = context["fmask"]
         shape = context["shape"]
