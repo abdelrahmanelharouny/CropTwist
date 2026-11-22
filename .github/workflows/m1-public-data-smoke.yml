@@ -32,7 +32,10 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r requirements.txt
       - name: Run bounded live public-provider checks
-        run: python scripts/m1_public_data_smoke.py | tee /tmp/m1-public-data-evidence.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python scripts/m1_public_data_smoke.py | tee /tmp/m1-public-data-evidence.json
       - name: Upload sanitized evidence
         if: always()
         uses: actions/upload-artifact@v4
