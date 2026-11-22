@@ -7,13 +7,19 @@ farmer data, or production database are used.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
+from app.core.config import settings
+from app.data_platform.contracts.observations import AreaOfInterest
 from app.data_platform.providers.nasa_hls.catalog import search_scenes
+from app.data_platform.providers.nasa_hls.provider import NasaHlsProvider, _record_to_scene_record
 from app.data_platform.providers.sentinel2.provider import Sentinel2StacProvider
 from app.data_platform.providers.wapor_v3 import WaPORV3Client
+from app.intelligence.config import ai_settings
+from app.intelligence.orchestration.provider_diagnostics import probe_provider
 from pyproj import Geod
 
 AOI = {
@@ -63,6 +69,41 @@ def main() -> int:
         }
         if not scenes:
             failures.append("NASA HLS public metadata discovery returned no scenes")
+        if settings.earthdata_bearer_token and scenes:
+            try:
+                best_scene = min(
+                    scenes,
+                    key=lambda scene: scene.cloud_cover_pct if scene.cloud_cover_pct is not None else 101.0,
+                )
+                scene_record = _record_to_scene_record(best_scene)
+                acquired = best_scene.acquired_at
+                result = NasaHlsProvider().fetch_observations(
+                    area_of_interest=AreaOfInterest(geometry_geojson=AOI),
+                    variables=["ndvi"],
+                    start=acquired - timedelta(seconds=1),
+                    end=acquired + timedelta(seconds=1),
+                    options={
+                        "scene_ids": [best_scene.scene_id],
+                        "scene_records": {best_scene.scene_id: scene_record},
+                    },
+                )
+                evidence["nasa_hls"]["protected_asset_read"] = {
+                    "status": "asset_window_verified" if result.observations else "no_valid_observations",
+                    "scene_id": best_scene.scene_id,
+                    "observation_count": len(result.observations),
+                    "warning_count": len(result.warnings),
+                    "coverage": result.coverage,
+                }
+                if not result.observations:
+                    failures.append("NASA HLS protected asset read returned no valid observations")
+            except Exception as exc:
+                evidence["nasa_hls"]["protected_asset_read"] = {
+                    "status": "failed",
+                    "error_type": type(exc).__name__,
+                }
+                failures.append("NASA HLS protected asset-window read failed")
+        else:
+            evidence["nasa_hls"]["protected_asset_read"] = "blocked_missing_earthdata_bearer_token"
     except Exception as exc:
         evidence["nasa_hls"] = {"status": "failed", "error_type": type(exc).__name__}
         failures.append("NASA HLS metadata discovery failed")
@@ -98,6 +139,31 @@ def main() -> int:
         }
         if not items:
             failures.append("CDSE Sentinel-2 public metadata discovery returned no items")
+        if settings.cdse_s3_access_key and settings.cdse_s3_secret_key:
+            try:
+                result = Sentinel2StacProvider().fetch_observations(
+                    area_of_interest=AreaOfInterest(geometry_geojson=AOI),
+                    variables=["ndvi"],
+                    start=datetime(2025, 12, 28, 0, 0, tzinfo=UTC),
+                    end=datetime(2025, 12, 29, 0, 0, tzinfo=UTC),
+                    options={"max_cloud_cover": 100.0},
+                )
+                evidence["copernicus_sentinel2"]["protected_asset_read"] = {
+                    "status": "asset_window_verified" if result.observations else "no_valid_observations",
+                    "observation_count": len(result.observations),
+                    "warning_count": len(result.warnings),
+                    "coverage": result.coverage,
+                }
+                if not result.observations:
+                    failures.append("CDSE protected asset read returned no valid observations")
+            except Exception as exc:
+                evidence["copernicus_sentinel2"]["protected_asset_read"] = {
+                    "status": "failed",
+                    "error_type": type(exc).__name__,
+                }
+                failures.append("CDSE protected S3 asset-window read failed")
+        else:
+            evidence["copernicus_sentinel2"]["protected_asset_read"] = "blocked_missing_cdse_s3_keys"
     except Exception as exc:
         evidence["copernicus_sentinel2"] = {
             "status": "failed",
@@ -188,6 +254,18 @@ def main() -> int:
             "error_type": type(exc).__name__,
         }
         failures.append("WaPOR Egypt L2 COG-window validation failed")
+
+    if ai_settings.gemini_api_key.get_secret_value():
+        try:
+            gemini = asyncio.run(probe_provider("gemini"))
+            evidence["gemini_primary_probe"] = gemini
+            if gemini.get("status") != "live_verified":
+                failures.append("Gemini primary provider live probe did not return live_verified")
+        except Exception as exc:
+            evidence["gemini_primary_probe"] = {"status": "failed", "error_type": type(exc).__name__}
+            failures.append("Gemini primary provider live probe failed")
+    else:
+        evidence["gemini_primary_probe"] = "blocked_missing_gemini_api_key"
 
     evidence["failures"] = failures
     evidence["overall_status"] = "passed" if not failures else "failed"
