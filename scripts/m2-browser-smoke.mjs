@@ -62,10 +62,8 @@ try {
     if (await tabs.count() < 2) failures.push(`${scenario.name}: sign-in/register tabs are missing`)
     else {
       await tabs.nth(1).click()
-      if (!(await page.locator('#register-name').isVisible().catch(() => false))) {
-        // The registration field id is checked below by the form's accessible structure.
-        const registrationForm = page.locator('form').filter({ has: page.locator('input[type="email"]') })
-        if (!(await registrationForm.isVisible().catch(() => false))) failures.push(`${scenario.name}: registration tab did not open a form`)
+      if (!(await page.locator('#reg-name').isVisible().catch(() => false))) {
+        failures.push(`${scenario.name}: registration form did not render`)
       }
       await tabs.nth(0).click()
       if (!(await emailInput.isVisible().catch(() => false))) failures.push(`${scenario.name}: sign-in tab did not restore the login form`)
