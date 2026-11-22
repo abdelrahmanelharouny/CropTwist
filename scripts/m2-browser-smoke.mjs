@@ -1,4 +1,9 @@
-import { chromium } from 'playwright'
+import { createRequire } from 'node:module'
+
+const packageRoot = process.env.PLAYWRIGHT_PACKAGE_ROOT
+if (!packageRoot) throw new Error('PLAYWRIGHT_PACKAGE_ROOT must point to the isolated Playwright install')
+const require = createRequire(`${packageRoot}/package.json`)
+const { chromium } = require('playwright')
 
 const baseURL = process.env.BASE_URL || 'http://127.0.0.1:3000'
 const failures = []
