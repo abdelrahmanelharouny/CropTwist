@@ -31,17 +31,6 @@ try {
     page.on('console', message => {
       if (message.type() === 'error' && !message.text().includes('401 (Unauthorized)')) failures.push(`${scenario.name}: console: ${message.text()}`)
     })
-    await page.route('**/api/v1/**', route => route.fulfill({
-      status: 401,
-      contentType: 'application/json',
-      body: JSON.stringify({ detail: 'Unauthenticated browser smoke fixture' }),
-    }))
-    await page.route('**/api/auth/**', route => route.fulfill({
-      status: 401,
-      contentType: 'application/json',
-      body: JSON.stringify({ authenticated: false }),
-    }))
-
     const response = await page.goto(baseURL, { waitUntil: 'networkidle', timeout: 60000 })
     if (!response || response.status() !== 200) failures.push(`${scenario.name}: homepage HTTP status ${response?.status() ?? 'no response'}`)
     const metadata = await page.locator('html').evaluate(el => ({
