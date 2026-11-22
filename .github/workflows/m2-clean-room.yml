@@ -156,12 +156,69 @@ jobs:
           if-no-files-found: warn
 
   clean-room-frontend:
-    name: clean production build + desktop/RTL browser smoke
+    name: clean production build + authenticated desktop/RTL browser journeys
     # Playwright's pinned browser build supports Ubuntu 24.04; the default
     # hosted ubuntu-latest image is newer and is not yet supported upstream.
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgis/postgis:16-3.5
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: croptwist_browser_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d croptwist_browser_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+    env:
+      CROPTWIST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5433/croptwist_browser_test
+      CROPTWIST_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5433/croptwist_browser_test
+      PGPASSWORD: postgres
+      CROPTWIST_DEV_MODE: "true"
+      CROPTWIST_LLM_ENABLED: "false"
+      CROPTWIST_JOB_WORKERS: "0"
+      CROPTWIST_SCHEDULER_ENABLED: "false"
+      CROPTWIST_REPORTS_DIR: /tmp/croptwist-m2-browser-reports
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: mini-services/fieldshift-api/requirements.txt
+      - name: Install API dependencies
+        run: pip install -r mini-services/fieldshift-api/requirements.txt
+      - name: Migrate clean browser database
+        working-directory: mini-services/fieldshift-api
+        run: alembic upgrade head
+      - name: Seed isolated demo workspace
+        working-directory: mini-services/fieldshift-api
+        run: |
+          python - <<'PY'
+          from app.core.database import SessionLocal
+          from app.dev.seed import ensure_demo_workspace
+          db = SessionLocal()
+          try:
+              ensure_demo_workspace(db)
+              db.commit()
+          finally:
+              db.close()
+          PY
+      - name: Start API for authenticated browser journeys
+        working-directory: mini-services/fieldshift-api
+        run: |
+          mkdir -p /tmp/croptwist-m2-browser-reports
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 3030 > /tmp/croptwist-m2-browser-api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fs http://127.0.0.1:3030/api/v1/health/ready >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3030/api/v1/health/ready
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
@@ -174,6 +231,8 @@ jobs:
       - name: Frontend regression tests
         run: bun test tests/frontend
       - name: Production build
+        env:
+          CROPTWIST_API_ORIGIN: http://127.0.0.1:3030
         run: bun run build
       - name: Install isolated browser runner
         run: |
@@ -181,7 +240,7 @@ jobs:
           /tmp/croptwist-browser/node_modules/.bin/playwright install --with-deps chromium
       - name: Run standalone production server and browser smoke
         run: |
-          CROPTWIST_API_ORIGIN=http://127.0.0.1:9 PORT=3000 HOSTNAME=127.0.0.1 \
+          CROPTWIST_API_ORIGIN=http://127.0.0.1:3030 PORT=3000 HOSTNAME=127.0.0.1 \
             nohup node .next/standalone/server.js > /tmp/croptwist-m2-web.log 2>&1 &
           for i in $(seq 1 60); do
             curl -fs http://127.0.0.1:3000/ >/dev/null 2>&1 && break
@@ -198,4 +257,5 @@ jobs:
             m2-desktop-en.png
             m2-mobile-ar.png
             /tmp/croptwist-m2-web.log
+            /tmp/croptwist-m2-browser-api.log
           if-no-files-found: warn
