@@ -47,7 +47,7 @@ RUN chown -R croptwist:croptwist /app
 USER croptwist
 
 # Railway injects PORT=8080; local Compose overrides the command to bind 3030.
-EXPOSE 8080
+EXPOSE 3030
 
 # Container health is liveness-only; database/PostGIS readiness is exposed separately at /api/v1/health/ready.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
