@@ -94,3 +94,32 @@ A milestone is complete only when:
 - source, provenance, permissions, failure modes and limitations are documented;
 - no live provider, production deployment, or model performance claim is made without direct evidence.
 
+
+
+## Supervisor execution update — 2026-11-22
+
+**Current verified main:** `631660aed96eb6af548698ecc686b42293f0a012`.
+
+### Integrated since the original snapshot
+
+- M1-A (#5), M1-C (#12), and privacy boundary (#17) were already merged before this update.
+- M1-B Presto (#11), M1-D WaPOR (#13), and M1-E provider diagnostics (#14) are now merged. Their exact PR-head CI runs passed before merge.
+- P2 interval-valued soil scoring (#22), P3 analytics entitlement enforcement (#23), notification SQL filtering (#20), and role-aware Billing UI (#19) are also merged after exact-head CI success.
+
+### Remaining M1 acceptance gates — do not mislabel as release-verified
+
+- **Presto:** implementation and deterministic tests are integrated, but numerical parity against upstream NASA Harvest pretrained inference with the official checkpoint remains unverified. No crop classifier, probability, or accuracy claim is approved.
+- **WaPOR:** adapter and mocked contracts are integrated; live FAO catalogue/raster smoke, field-window pixel comparison, and current L2-RSM-D availability remain unverified.
+- **Provider diagnostics:** safe fixed-prompt probe is integrated; no provider is live-verified until an operator runs it with authorized credentials. It does not approve sending farmer/field data.
+- **Privacy:** external field-data egress remains disabled by default. Future enablement requires explicit approval and deployment-specific review.
+
+### Active branches at this update
+
+- #15 worker log stream correction — exact updated-head CI is running.
+- #16 generated report artifact cleanup — exact updated-head CI is running.
+- #18 opt-in loopback-only Ollama/Qwen — branch reconciled with current main; exact updated-head CI is running. Model runtime, Arabic quality, host resources and latency remain unverified; provider remains disabled by default.
+- #21 this execution board — documentation only; CI is running.
+
+### Main verification
+
+The post-integration main CI run for `631660aed96eb6af548698ecc686b42293f0a012` is still running. Alembic upgrade/idempotence/drift checks passed and frontend typecheck, lint, frontend tests and production build passed; backend pytest is still running. Do not call the integrated main fully green until backend pytest and E2E complete successfully.
