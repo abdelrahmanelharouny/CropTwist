@@ -103,6 +103,16 @@ def test_nasa_hls_extracts_only_numeric_http_status_from_gdal_error():
 
 
 
+
+
+def test_nasa_hls_maps_gdal_errors_to_safe_failure_codes():
+    code = hls_provider_module._safe_gdal_failure_code
+    assert code(RuntimeError("HTTP response code: 401")) == "http_401"
+    assert code(RuntimeError("SSL certificate validation failed")) == "tls_validation_error"
+    assert code(RuntimeError("Could not resolve host")) == "dns_resolution_error"
+    assert code(RuntimeError("unclassified raster issue")) == "raster_read_failed"
+
+
 def test_hls_reads_only_surfaces_required_by_requested_indices():
     assert hls_provider_module._required_surfaces_for_indices(["ndvi"]) == ["red", "nir"]
     assert hls_provider_module._required_surfaces_for_indices(["ndmi", "evi"]) == [
