@@ -171,7 +171,7 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:3000/ >/dev/null
-          NODE_PATH=/tmp/croptwist-browser/node_modules node scripts/m2-browser-smoke.mjs
+          PLAYWRIGHT_PACKAGE_ROOT=/tmp/croptwist-browser node scripts/m2-browser-smoke.mjs
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
