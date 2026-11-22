@@ -19,6 +19,13 @@ jobs:
   public-provider-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 18
+    env:
+      CROPTWIST_GEMINI_API_KEY: ${{ secrets.CROPTWIST_GEMINI_API_KEY }}
+      CROPTWIST_EARTHDATA_BEARER_TOKEN: ${{ secrets.CROPTWIST_EARTHDATA_BEARER_TOKEN }}
+      CROPTWIST_CDSE_S3_ACCESS_KEY: ${{ secrets.CROPTWIST_CDSE_S3_ACCESS_KEY }}
+      CROPTWIST_CDSE_S3_SECRET_KEY: ${{ secrets.CROPTWIST_CDSE_S3_SECRET_KEY }}
+      CROPTWIST_AI_ALLOW_FIELD_DATA_TO_PROVIDERS: "false"
+      CROPTWIST_OPENROUTER_ALLOW_FIELD_DATA: "false"
     defaults:
       run:
         working-directory: mini-services/fieldshift-api
