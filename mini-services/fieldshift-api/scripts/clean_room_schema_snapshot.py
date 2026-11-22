@@ -61,6 +61,11 @@ def main() -> None:
         ]
         sequences = sorted(inspector.get_sequence_names(schema=schema))
         with engine.connect() as connection:
+            migration_revisions = (
+                sorted(connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all())
+                if inspector.has_table("alembic_version", schema=schema)
+                else []
+            )
             extensions = [
                 {"name": row[0], "version": row[1]}
                 for row in connection.execute(
@@ -103,6 +108,7 @@ def main() -> None:
             ]
         snapshot = {
             "schema": schema,
+            "migration_revisions": migration_revisions,
             "extensions": extensions,
             "tables": tables,
             "views": views,
