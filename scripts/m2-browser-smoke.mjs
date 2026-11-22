@@ -71,6 +71,16 @@ try {
     if (scenario.width < 500 && metadata.bodyWidth > metadata.viewportWidth + 2) {
       failures.push(`${scenario.name}: horizontal page overflow ${metadata.bodyWidth}px > ${metadata.viewportWidth}px`)
     }
+    // Complete a real demo authentication against the clean-room API, then
+    // assert the authenticated workspace shell and page heading render.
+    await page.getByRole('button').last().click()
+    await page.locator('.ct-topbar').waitFor({ state: 'visible', timeout: 30000 })
+    const authenticatedHeading = await page.locator('h1.sr-only').innerText()
+    if (!authenticatedHeading.trim()) failures.push(`${scenario.name}: authenticated workspace heading is empty`)
+    const authenticatedWidth = await page.evaluate(() => document.body.scrollWidth)
+    if (scenario.width < 500 && authenticatedWidth > scenario.width + 2) {
+      failures.push(`${scenario.name}: authenticated workspace overflows horizontally (${authenticatedWidth}px)`)
+    }
     await page.screenshot({ path: `m2-${scenario.name}.png`, fullPage: true })
     console.log(`[browser-smoke] ${scenario.name}: ${JSON.stringify(metadata)}`)
     await context.close()
