@@ -514,3 +514,34 @@
     transition: none;
   }
 }
+
+
+/* Pre-deployment accessibility baseline: keyboard focus must remain visible
+   across controls, not only the custom workspace navigation. */
+.ct-theme :where(
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [role="tab"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  outline: 2px solid var(--ct-mint);
+  outline-offset: 3px;
+}
+
+/* Respect the user's motion preference across Radix, Tailwind and app-owned
+   transitions/animations. This also prevents animated charts/decorations
+   from becoming an accessibility blocker. */
+@media (prefers-reduced-motion: reduce) {
+  .ct-theme *,
+  .ct-theme *::before,
+  .ct-theme *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
