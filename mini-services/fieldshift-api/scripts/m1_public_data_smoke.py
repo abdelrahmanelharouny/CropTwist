@@ -11,6 +11,7 @@ import asyncio
 import json
 import re
 import sys
+import httpx
 from datetime import UTC, datetime, timedelta
 
 from app.core.config import settings
@@ -105,6 +106,42 @@ def _safe_warning_http_statuses(warnings: list[str]) -> list[int]:
 
 
 
+
+
+def _probe_nasa_asset_http(asset_url: str | None, bearer_token: str) -> dict[str, object]:
+    """Check one protected HLS asset with a one-byte Range request; return no URL/body."""
+    from app.data_platform.providers.nasa_hls.provider import _normalize_earthdata_bearer_token
+
+    token = _normalize_earthdata_bearer_token(bearer_token)
+    if not asset_url or not token:
+        return {"status": "blocked_missing_asset_or_token"}
+    try:
+        with httpx.Client(
+            follow_redirects=True,
+            timeout=httpx.Timeout(15.0, connect=5.0),
+        ) as client:
+            with client.stream(
+                "GET",
+                asset_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Range": "bytes=0-0",
+                },
+            ) as response:
+                status_code = response.status_code
+                content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+                raster_content = content_type in {"image/tiff", "application/octet-stream"}
+                return {
+                    "status": "asset_http_verified" if status_code in {200, 206} and raster_content else "failed",
+                    "http_status": status_code if 100 <= status_code <= 599 else None,
+                    "content_type_class": "raster" if raster_content else "other",
+                    "range_response": status_code == 206,
+                }
+    except Exception as exc:
+        return {"status": "failed", "error_type": type(exc).__name__}
+
+
+
 def main() -> int:
     evidence: dict[str, object] = {
         "test": "m1_public_data_smoke",
@@ -150,6 +187,10 @@ def main() -> int:
                     key=lambda scene: scene.cloud_cover_pct if scene.cloud_cover_pct is not None else 101.0,
                 )
                 scene_record = _record_to_scene_record(best_scene)
+                evidence["nasa_hls"]["asset_http_probe"] = _probe_nasa_asset_http(
+                    best_scene.asset_refs.get("red") or best_scene.asset_refs.get("nir"),
+                    settings.earthdata_bearer_token,
+                )
                 acquired = best_scene.acquired_at
                 result = NasaHlsProvider().fetch_observations(
                     area_of_interest=AreaOfInterest(geometry_geojson=AOI),
