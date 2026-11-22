@@ -38,6 +38,8 @@
   "billing": {
     "title": "Billing",
     "intro": "Subscription, usage and invoices for your organization. The currently active payment provider is labelled on this page.",
+    "adminOnlyTitle": "Billing is managed by an organization admin",
+    "adminOnlyBody": "You can use the workspace normally, but subscription changes, invoices and usage details are available only to the organization owner or an organization admin.",
     "testModeBadge": "Test mode",
     "testModeNote": "Payments are processed by the sandbox provider — no real money moves.",
     "planLabel": "Plan",

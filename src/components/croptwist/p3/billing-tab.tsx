@@ -44,6 +44,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ApiError, describeError } from '@/lib/api'
 import { formatDateTime, formatDay } from '@/lib/format'
 import { useCropTwistUi } from '@/lib/store'
+import { canManageBilling } from '@/lib/billing-access'
 import {
   changeBillingSubscription,
   cancelBillingSubscription,
@@ -199,6 +200,7 @@ export default function BillingTab() {
   })
   const org = orgsQuery.data?.items[0] ?? null
   const orgId = org?.id ?? null
+  const canManage = canManageBilling(org?.my_role)
 
   const [period, setPeriod] = useState<'monthly' | 'yearly'>('monthly')
   const [sandboxHidden, setSandboxHidden] = useState(false)
@@ -210,28 +212,28 @@ export default function BillingTab() {
   const subQuery = useQuery({
     queryKey: ['p3-billing-subscription', orgId],
     queryFn: () => getBillingSubscription(orgId as string),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId && canManage),
     staleTime: 15_000,
     retry: 1,
   })
   const usageQuery = useQuery({
     queryKey: ['p3-billing-usage', orgId],
     queryFn: () => getBillingUsage(orgId as string),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId && canManage),
     staleTime: 15_000,
     retry: 1,
   })
   const entQuery = useQuery({
     queryKey: ['p3-billing-entitlements', orgId],
     queryFn: () => getBillingEntitlements(orgId as string),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId && canManage),
     staleTime: 60_000,
     retry: 1,
   })
   const invoicesQuery = useQuery({
     queryKey: ['p3-billing-invoices', orgId],
     queryFn: () => listBillingInvoices(orgId as string, { limit: 50 }),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId && canManage),
     staleTime: 30_000,
     retry: 1,
   })
@@ -323,6 +325,26 @@ export default function BillingTab() {
     )
   }
   if (!org) return <NoOrgEmptyState t={t} />
+
+  if (!canManage) {
+    return (
+      <div className="space-y-4">
+        <header>
+          <h2 className="text-lg font-semibold text-stone-900">{t('billing.title')}</h2>
+          <p className="mt-0.5 text-sm text-stone-500">{t('billing.intro')}</p>
+        </header>
+        <Card>
+          <CardContent className="flex items-start gap-3 py-6">
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-stone-500" aria-hidden="true" />
+            <div className="space-y-1">
+              <p className="font-semibold text-stone-900">{t('billing.adminOnlyTitle')}</p>
+              <p className="text-sm leading-relaxed text-stone-600">{t('billing.adminOnlyBody')}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const isTestProvider =
     subscription !== null && (subscription.provider === 'sandbox' || subscription.provider_mode === 'test')
