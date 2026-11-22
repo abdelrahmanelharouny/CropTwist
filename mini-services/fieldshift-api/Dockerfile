@@ -32,6 +32,9 @@ RUN groupadd --system --gid 10001 croptwist \
 COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /app
+# Staging PostgreSQL CA is public trust material, not a private key.
+COPY certs/staging-postgres-ca.crt /etc/ssl/certs/croptwist-staging-postgres-ca.crt
+
 # Application code + Alembic migration set (the compose entrypoint runs
 # `alembic upgrade head` before uvicorn; migrations/env.py reads
 # CROPTWIST_DATABASE_URL via app.core.config).
