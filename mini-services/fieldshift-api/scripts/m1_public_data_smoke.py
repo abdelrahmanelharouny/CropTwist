@@ -78,7 +78,7 @@ def _safe_warning_reason_codes(warnings: list[str]) -> list[str]:
         if not isinstance(warning, str):
             continue
         for reason in _SAFE_PROVIDER_REASON_CODES:
-            if re.search(r"\\(" + re.escape(reason) + r"\\)", warning):
+            if re.search(r"\(" + re.escape(reason) + r"\)", warning):
                 found.add(reason)
     return sorted(found)
 
