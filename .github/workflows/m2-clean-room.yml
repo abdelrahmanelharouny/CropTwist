@@ -123,6 +123,11 @@ jobs:
           cp /tmp/schema-a.json /tmp/croptwist-m2-artifacts/schema-a.json
           cp /tmp/schema-b.json /tmp/croptwist-m2-artifacts/schema-b.json
       - name: Full backend test suite against fresh PostGIS database
+        # Provider tests use mocked transports and explicitly exercise the enabled path.
+        # Keep the production-like rules-only default for the later API E2E step,
+        # but do not globally disable the LLM setting while running unit tests.
+        env:
+          CROPTWIST_LLM_ENABLED: "true"
         run: pytest -q
       - name: Seed isolated demo workspace
         run: |
