@@ -139,7 +139,7 @@ jobs:
       - name: Start isolated rules-only API
         run: |
           mkdir -p /tmp/croptwist-m2-reports
-          CROPTWIST_DEV_MODE=true CROPTWIST_LLM_ENABLED=false CROPTWIST_SCHEDULER_ENABLED=false \
+          CROPTWIST_DEV_MODE=true CROPTWIST_LLM_ENABLED=false CROPTWIST_JOB_WORKERS=1 CROPTWIST_SCHEDULER_ENABLED=false \
             nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 3030 > /tmp/croptwist-m2-api.log 2>&1 &
           for i in $(seq 1 60); do
             curl -fs http://127.0.0.1:3030/api/v1/health/ready >/dev/null 2>&1 && break
@@ -184,7 +184,7 @@ jobs:
       PGPASSWORD: postgres
       CROPTWIST_DEV_MODE: "true"
       CROPTWIST_LLM_ENABLED: "false"
-      CROPTWIST_JOB_WORKERS: "0"
+      CROPTWIST_JOB_WORKERS: "1"
       CROPTWIST_SCHEDULER_ENABLED: "false"
       CROPTWIST_REPORTS_DIR: /tmp/croptwist-m2-browser-reports
     steps:
