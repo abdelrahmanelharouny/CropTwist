@@ -102,7 +102,7 @@ def test_probe_timeout_is_reported_without_raw_exception_details(monkeypatch):
     monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Slow())
     result = asyncio.run(provider_diagnostics.probe_provider("slow"))
     assert result["status"] == "failed"
-    assert result["error_category"] == "provider_probe_failed"
+    assert result["error_category"] == "provider_timeout"
 
 
 
