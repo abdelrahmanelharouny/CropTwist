@@ -46,7 +46,7 @@ RUN chown -R croptwist:croptwist /app
 
 USER croptwist
 
-EXPOSE 3030
+EXPOSE 8080  # Railway injects PORT=8080; local Compose overrides the command to bind 3030.
 
 # Liveness probe without curl/wget: stdlib urllib against /api/v1/health.
 # (Readiness incl. the PostGIS check is /api/v1/health/ready.)
