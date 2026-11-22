@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -244,7 +245,21 @@ class NasaHlsProvider:
                     gdal_env=gdal_env,
                 )
             except ProviderUnavailable as exc:
-                warnings.append(f"Scene {scene_id}: {exc}")
+                detail = next(
+                    (item for item in getattr(exc, "details", []) if isinstance(item, dict)),
+                    {},
+                )
+                reason = detail.get("reason")
+                safe_reason = (
+                    reason
+                    if isinstance(reason, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", reason)
+                    else type(exc).__name__
+                )
+                status_code = detail.get("http_status")
+                warning = f"Scene {scene_id}: protected asset read failed ({safe_reason})"
+                if isinstance(status_code, int) and not isinstance(status_code, bool) and 100 <= status_code <= 599:
+                    warning += f" http_status:{status_code}"
+                warnings.append(warning)
                 logger.warning("nasa_hls scene degraded", extra={"scene_id": scene_id})
                 continue
             observations.extend(scene_obs)
@@ -413,6 +428,21 @@ class NasaHlsProvider:
 
 
 # ------------------------------------------------------------------ helpers
+
+
+def _safe_http_status_from_exception(exc: Exception) -> int | None:
+    """Extract only a numeric HTTP status from a GDAL exception message."""
+    match = re.search(
+        r"(?:HTTP response code|HTTP status(?: code)?)\D{0,12}([1-5][0-9]{2})",
+        str(exc),
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    status_code = int(match.group(1))
+    return status_code if 100 <= status_code <= 599 else None
+
+
 def hls_catalog_url() -> str | None:
     return settings.nasa_hls_stac_base_url.rstrip("/") + hls_catalog.STAC_SEARCH_PATH
 
@@ -699,10 +729,14 @@ def _scene_observations(
         cloud_mask = ((fmask_uint8 & FMASK_EXCLUDE_MASK) != 0) | high_aerosol_mask
     except Exception as exc:  # noqa: BLE001 — raster errors can contain signed asset URLs
         reason = type(exc).__name__
+        details = {"scene_id": scene_id, "reason": reason}
+        http_status = _safe_http_status_from_exception(exc)
+        if http_status is not None:
+            details["http_status"] = http_status
         raise ProviderUnavailable(
             f"Scene {scene_id} could not be read or validated ({reason}); "
             "verify Earthdata credentials, COG availability, CRS metadata and QA assets.",
-            details=[{"scene_id": scene_id, "reason": reason}],
+            details=[details],
         ) from exc
 
     observations: list[CanonicalObservation] = []
