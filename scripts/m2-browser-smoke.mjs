@@ -29,7 +29,7 @@ try {
     const page = await context.newPage()
     page.on('pageerror', error => failures.push(`${scenario.name}: pageerror: ${error.message}`))
     page.on('console', message => {
-      if (message.type() === 'error') failures.push(`${scenario.name}: console: ${message.text()}`)
+      if (message.type() === 'error' && !message.text().includes('401 (Unauthorized)')) failures.push(`${scenario.name}: console: ${message.text()}`)
     })
     await page.route('**/api/v1/**', route => route.fulfill({
       status: 401,
