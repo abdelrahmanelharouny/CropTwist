@@ -19,7 +19,7 @@ Live validation branch: `test/m1-safe-live-validation`
 | Presto | Input contract, lazy encoder, 128-D embedding path, classifier training harness | No independent numerical parity result against upstream implementation; no approved labeled training dataset selected/tracked | Scientific acceptance pending |
 | E5 multilingual retrieval | Local E5 adapter and evaluator | No reviewed Arabic/English relevance-labelled corpus and no accepted Recall@5/@10, MRR, or nDCG report; semantic retrieval remains disabled | Quality acceptance pending |
 
-The public smoke run that produced the HLS/CDSE/WaPOR evidence is GitHub Actions run **45073936468** on commit `c5e810d25527287c30783693a60b714d9c911934`. Its sanitized evidence is uploaded as the `m1-public-data-smoke-evidence` artifact.
+The latest exact-head public smoke is GitHub Actions run **45074284121** on commit `d5490629837670a2c5485c63d63e8d1f164bc71d**. It passed public metadata discovery and the live WaPOR COG-window read; its sanitized evidence is uploaded as the `m1-public-data-smoke-evidence` artifact. The run explicitly reported Gemini, Earthdata, and CDSE protected reads as `blocked_missing_*` because the corresponding Actions secrets are absent.
 
 ## Required to close M1
 
