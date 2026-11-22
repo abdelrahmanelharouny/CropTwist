@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from app.data_platform.providers.nasa_hls.catalog import search_scenes
 from app.data_platform.providers.sentinel2.provider import Sentinel2StacProvider
 from app.data_platform.providers.wapor_v3 import WaPORV3Client
+from pyproj import Geod
 
 AOI = {
     "type": "Polygon",
@@ -52,6 +53,8 @@ def main() -> int:
             "status": "metadata_verified" if scenes else "no_items",
             "scene_count": len(scenes),
             "collections": sorted({scene.collection_id for scene in scenes}),
+            "sample_scene_id": scenes[0].scene_id,
+            "sample_collection": scenes[0].collection,
             "latest_acquisition": max(
                 (scene.acquired_at.isoformat() for scene in scenes), default=None
             ),
@@ -75,6 +78,7 @@ def main() -> int:
         evidence["copernicus_sentinel2"] = {
             "status": "metadata_verified" if items else "no_items",
             "item_count": len(items),
+            "sample_item_id": str(items[0].get("id")) if items else None,
             "collections": sorted({
                 str(item.get("collection"))
                 for item in items
@@ -119,13 +123,41 @@ def main() -> int:
             geometry_geojson=AOI,
             max_window_mb=32,
         )
+        import rasterio
+
+        with rasterio.open(selected["download_url"]) as dataset:
+            if dataset.crs is None:
+                raise RuntimeError("WaPOR COG has no CRS")
+            if not dataset.is_tiled:
+                raise RuntimeError("WaPOR raster is not internally tiled")
+            x_resolution, y_resolution = dataset.res
+            if dataset.crs.is_geographic:
+                geod = Geod(ellps="WGS84")
+                lon0 = (30.8000 + 30.8400) / 2
+                lat0 = (27.7000 + 27.7400) / 2
+                _, _, x_metres = geod.inv(lon0, lat0, lon0 + x_resolution, lat0)
+                _, _, y_metres = geod.inv(lon0, lat0, lon0, lat0 + y_resolution)
+            elif dataset.crs.is_projected:
+                factor = dataset.crs.axis_info[0].unit_conversion_factor or 1.0
+                x_metres = x_resolution * factor
+                y_metres = y_resolution * factor
+            else:
+                raise RuntimeError("WaPOR COG CRS units cannot be converted to metres")
+            actual_resolution_m_xy = [abs(float(x_metres)), abs(float(y_metres))]
+            actual_crs = dataset.crs.to_string()
+            raster_nodata = dataset.nodata
+            raster_overviews = dataset.overviews(1)
         evidence["wapor_egypt_l2_aeti"] = {
             "status": "asset_window_verified",
             "mapset_count": len(mapset_codes),
             "available_raster_count": len(rasters),
             "period_code": window.period_code,
             "crs": window.crs,
-            "resolution_m": window.resolution_m,
+            "actual_raster_crs": actual_crs,
+            "catalogue_resolution_m": window.resolution_m,
+            "actual_resolution_m_xy": actual_resolution_m_xy,
+            "raster_nodata_value": raster_nodata,
+            "raster_overview_levels": raster_overviews,
             "unit": window.unit,
             "scale_factor": window.scale_factor,
             "offset": window.offset,
@@ -141,8 +173,10 @@ def main() -> int:
             failures.append("WaPOR raster window contained no valid pixels")
         if not window.crs:
             failures.append("WaPOR raster CRS metadata is missing")
-        if window.resolution_m != 100:
-            failures.append("WaPOR Egypt L2 resolution did not match the 100 m product spec")
+        if actual_crs != window.crs:
+            failures.append("WaPOR provider CRS differs from the source GeoTIFF CRS")
+        if not all(80.0 <= value <= 120.0 for value in actual_resolution_m_xy):
+            failures.append("WaPOR source GeoTIFF pixel size is inconsistent with the 100 m L2 product spec")
         if window.unit != "mm/day" or window.scale_factor != 0.1 or window.offset not in (0.0, None):
             failures.append("WaPOR AETI unit/scale/offset did not match the versioned product spec")
         if window.scaled_mean is None:
