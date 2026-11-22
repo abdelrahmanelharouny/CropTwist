@@ -157,7 +157,9 @@ jobs:
 
   clean-room-frontend:
     name: clean production build + desktop/RTL browser smoke
-    runs-on: ubuntu-latest
+    # Playwright's pinned browser build supports Ubuntu 24.04; the default
+    # hosted ubuntu-latest image is newer and is not yet supported upstream.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
