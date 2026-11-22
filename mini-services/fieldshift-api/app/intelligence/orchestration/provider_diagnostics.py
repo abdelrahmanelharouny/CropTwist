@@ -64,7 +64,11 @@ async def probe_provider(name: str) -> dict[str, Any]:
 
         result = await asyncio.wait_for(invoke_probe(), timeout=PROBE_TIMEOUT_SECONDS)
     except Exception as exc:
-        category = getattr(exc, "category", "provider_probe_failed")
+        category = (
+            "provider_timeout"
+            if isinstance(exc, (asyncio.TimeoutError, TimeoutError))
+            else getattr(exc, "category", "provider_probe_failed")
+        )
         # Never echo arbitrary exception attributes: third-party exceptions may
         # accidentally place credentials or response fragments in category.
         safe_categories = {
