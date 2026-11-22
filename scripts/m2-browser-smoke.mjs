@@ -60,9 +60,11 @@ try {
     if (scenario.width < 500 && metadata.bodyWidth > metadata.viewportWidth + 2) {
       failures.push(`${scenario.name}: horizontal page overflow ${metadata.bodyWidth}px > ${metadata.viewportWidth}px`)
     }
-    // Complete a real demo authentication against the clean-room API, then
-    // assert the authenticated workspace shell and page heading render.
-    await page.getByRole('button').last().click()
+    // Complete a real credential login against the clean-room API using the
+    // isolated synthetic demo account seeded by the backend job.
+    await emailInput.fill('demo@croptwist.local')
+    await page.locator('#login-password').fill('croptwist-demo-2026')
+    await page.locator('form').filter({ has: emailInput }).locator('button[type="submit"]').click()
     await page.locator('.ct-topbar').waitFor({ state: 'visible', timeout: 30000 })
     const authenticatedHeading = await page.locator('h1.sr-only').innerText()
     if (!authenticatedHeading.trim()) failures.push(`${scenario.name}: authenticated workspace heading is empty`)
