@@ -58,11 +58,11 @@ These are offline/mock-backed regression tests; passing them is not proof of ext
 
 ## Phase 1 — public metadata probes (no secrets required)
 
-Use a small, non-sensitive test polygon and a bounded recent date window. Verify:
+Use the executable public-only smoke (`python scripts/m1_public_data_smoke.py`) with its fixed, non-sensitive Mallawi test polygon and bounded 2025 window. The `M1 Public Data Smoke` GitHub Actions workflow runs the same probe on this PR. It verifies:
 
 1. NASA CMR STAC returns HLSL30/HLSS30 metadata for the selected area and time window.
 2. CDSE STAC returns Sentinel-2 L2A items for the same bounded area/time window.
-3. WaPOR v3 returns the expected Egypt L2 mapsets and dekadal raster metadata.
+3. WaPOR v3 returns the Egypt L2 AETI mapset, a current dekadal raster, and a real bounded COG window with valid pixels and consistent CRS/resolution/unit/scale metadata.
 
 For each source, save only sanitized metadata: provider/product identifier, acquisition/period date, cloud cover if present, CRS, native resolution, and public documentation/license reference. Do not persist signed asset URLs.
 
@@ -94,7 +94,7 @@ Run only in a disposable local/staging environment with the credentials loaded f
 - Compare catalogue/API/GeoTIFF metadata with the versioned product specification. If units or scale conflict, retain raw statistics and withhold scaled physical summaries.
 - Preserve CC BY-SA 4.0 attribution in derived-data provenance.
 
-A successful catalogue response is not a successful raster-read test. A synthetic or mocked raster is never evidence of live data availability.
+A successful catalogue response is not a successful raster-read test. The public smoke performs a real WaPOR COG window read; NASA and CDSE remain metadata-only until their protected asset reads are run with the respective credentials. A synthetic or mocked raster is never evidence of live data availability.
 
 ## Phase 3 — Gemini-first LLM connectivity (fixed prompt only)
 
@@ -131,4 +131,4 @@ No relevance-labelled corpus is currently bundled; therefore no E5 quality score
 
 Record one row per provider with: test timestamp (UTC), environment name (never secret values), provider/product, test area identifier, date range, metadata discovery status, asset read status, CRS/resolution, units/scale verification, valid-pixel count, provenance completeness, sanitized error category, and reviewer.
 
-Do not mark M1 external-data validation complete until NASA HLS and CDSE each pass a real protected asset-window read, WaPOR passes a real Egypt COG-window read, Gemini (the configured primary provider) returns live_verified, and the offline regression suite passes. Fallback-provider status is recorded separately. E5 remains a separate quality gate requiring reviewed relevance judgements.
+Do not mark M1 external-data validation complete until NASA HLS and CDSE each pass a real protected asset-window read, WaPOR passes a real Egypt COG-window read, Gemini (the configured primary provider) returns live_verified, and the offline regression suite passes. Fallback-provider status is recorded separately. E5 remains a separate quality gate requiring reviewed relevance judgements. The public smoke workflow proves discovery and the WaPOR read only; it does not replace protected HLS/CDSE reads, Gemini connectivity, Presto numerical parity, or the E5 judged-corpus benchmark.
