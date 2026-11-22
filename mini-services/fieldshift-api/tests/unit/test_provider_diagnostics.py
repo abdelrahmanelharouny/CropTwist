@@ -106,6 +106,18 @@ def test_probe_timeout_is_reported_without_raw_exception_details(monkeypatch):
 
 
 
+
+
+def test_probe_timeout_covers_provider_retry_budget():
+    from app.intelligence.config import ai_settings
+
+    configured_budget = (
+        ai_settings.ai_provider_timeout_seconds * (ai_settings.ai_provider_max_retries + 1)
+        + ai_settings.ai_provider_max_backoff_seconds * ai_settings.ai_provider_max_retries
+    )
+    assert provider_diagnostics.PROBE_TIMEOUT_SECONDS > configured_budget
+
+
 def test_probe_does_not_verify_an_unexpected_nonempty_response(monkeypatch):
     class WrongResponse:
         name = "wrong-response"
