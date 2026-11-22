@@ -1,0 +1,45 @@
+name: Staging Smoke
+
+on:
+  push:
+    branches:
+      - ops/staging-postgis-tls
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  staging-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Wait for API liveness
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://croptwist-api-staging-staging.up.railway.app"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --max-time 8 "$base/api/v1/health"; then
+              echo
+              echo "API liveness passed on attempt $attempt"
+              exit 0
+            fi
+            echo "API not ready yet (attempt $attempt/30)"
+            sleep 10
+          done
+          echo "API liveness did not become healthy"
+          exit 1
+      - name: Verify PostGIS and migration readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://croptwist-api-staging-staging.up.railway.app"
+          curl --fail --silent --show-error --max-time 15 "$base/api/v1/health/ready"
+          echo
+      - name: Verify OpenAPI is served
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 15             "https://croptwist-api-staging-staging.up.railway.app/openapi.json"             -o /dev/null
+          echo "OpenAPI endpoint passed"
