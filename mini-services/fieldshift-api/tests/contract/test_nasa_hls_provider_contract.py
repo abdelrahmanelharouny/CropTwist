@@ -89,6 +89,17 @@ def make_client(pages, calls=None):
 
 
 
+
+
+def test_nasa_hls_normalizes_raw_and_prefixed_bearer_tokens():
+    normalize = hls_provider_module._normalize_earthdata_bearer_token
+    assert normalize("token-value") == "token-value"
+    assert normalize("Bearer token-value") == "token-value"
+    assert normalize("  BEARER token-value  ") == "token-value"
+    assert normalize("   ") is None
+
+
+
 def test_nasa_hls_extracts_only_numeric_http_status_from_gdal_error():
     assert hls_provider_module._safe_http_status_from_exception(
         RuntimeError("HTTP response code: 403 while reading a protected asset")
