@@ -150,3 +150,10 @@ The post-integration main CI run for `631660aed96eb6af548698ecc686b42293f0a012` 
 ### Release boundary
 
 M1's code foundations are substantially integrated, but M1 is **not release-accepted** until the live-data, model-parity, retrieval-quality and provider/runtime gates above are evidenced. M2 clean-room deployment remains a separate subsequent gate. No production deployment or secret mutation was performed by these merges.
+
+
+### Follow-up after the 15:40 update
+
+- PR #18's stacked branch was closed as superseded. Its local Qwen changes were reapplied without unrelated history on the latest main baseline in **PR #24** (head `6291e5fd`, seven-file diff). PR #24 is the sole canonical Qwen review target; its exact-head CI run #678 has been queued. Keep it unmerged until both backend/PostGIS and frontend jobs pass.
+- PR #15 and #16 are now merged; the old active-branch entries above are historical. Their successful exact-head CI runs were #666 and #667.
+- PR #21 is this board update. Its CI must pass on the latest board commit before merge.
