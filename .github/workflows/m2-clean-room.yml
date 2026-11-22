@@ -1,0 +1,184 @@
+name: M2 Clean-room Release
+
+on:
+  push:
+    branches:
+      - work/m2-clean-room-release
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m2-clean-room-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  clean-room-backend:
+    name: two empty PostGIS databases + full backend/E2E
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mini-services/fieldshift-api
+    services:
+      postgres_a:
+        image: postgis/postgis:16-3.5
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: croptwist_clean_a
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d croptwist_clean_a"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+      postgres_b:
+        image: postgis/postgis:16-3.5
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: croptwist_clean_b
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d croptwist_clean_b"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+    env:
+      CROPTWIST_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5433/croptwist_clean_a
+      CROPTWIST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5433/croptwist_clean_a
+      PGPASSWORD: postgres
+      CROPTWIST_DEV_MODE: "true"
+      CROPTWIST_LLM_ENABLED: "false"
+      CROPTWIST_JOB_WORKERS: "0"
+      CROPTWIST_SCHEDULER_ENABLED: "false"
+      CROPTWIST_REPORTS_DIR: /tmp/croptwist-m2-reports
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: mini-services/fieldshift-api/requirements.txt
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+      - name: Assert both databases are empty before migration
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+          for port, name in [(5433, "croptwist_clean_a"), (5434, "croptwist_clean_b")]:
+              url = f"postgresql+psycopg2://postgres:postgres@127.0.0.1:{port}/{name}"
+              engine = create_engine(url)
+              tables = inspect(engine).get_table_names(schema="public")
+              assert not tables, f"{name} was not empty: {tables}"
+              engine.dispose()
+              print(f"{name}: empty public schema confirmed")
+          PY
+      - name: First migration pass on independent databases
+        run: |
+          alembic upgrade head
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b alembic upgrade head
+      - name: Second migration pass must be idempotent
+        run: |
+          alembic upgrade head
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b alembic upgrade head
+      - name: Verify Alembic head and ORM migration parity on both databases
+        run: |
+          alembic current
+          alembic check
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b alembic current
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b alembic check
+      - name: Compare deterministic schema inventories
+        run: |
+          python scripts/clean_room_schema_snapshot.py > /tmp/schema-a.json
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b python scripts/clean_room_schema_snapshot.py > /tmp/schema-b.json
+          diff -u /tmp/schema-a.json /tmp/schema-b.json
+          mkdir -p /tmp/croptwist-m2-artifacts
+          cp /tmp/schema-a.json /tmp/croptwist-m2-artifacts/schema-a.json
+          cp /tmp/schema-b.json /tmp/croptwist-m2-artifacts/schema-b.json
+      - name: Full backend test suite against fresh PostGIS database
+        run: pytest -q
+      - name: Seed isolated demo workspace
+        run: |
+          python - <<'PY'
+          from app.core.database import SessionLocal
+          from app.dev.seed import ensure_demo_workspace
+          db = SessionLocal()
+          try:
+              ensure_demo_workspace(db)
+              db.commit()
+          finally:
+              db.close()
+          PY
+      - name: Start isolated rules-only API
+        run: |
+          mkdir -p /tmp/croptwist-m2-reports
+          CROPTWIST_DEV_MODE=true CROPTWIST_LLM_ENABLED=false CROPTWIST_SCHEDULER_ENABLED=false \
+            nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 3030 > /tmp/croptwist-m2-api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fs http://127.0.0.1:3030/api/v1/health/ready >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3030/api/v1/health/ready
+      - name: Authenticated API E2E journey
+        run: python scripts/e2e_smoke.py --expect-rules-only
+      - name: Upload clean-room evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m2-clean-room-backend-evidence
+          path: |
+            /tmp/croptwist-m2-artifacts/
+            /tmp/croptwist-m2-api.log
+          if-no-files-found: warn
+
+  clean-room-frontend:
+    name: clean production build + desktop/RTL browser smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install frontend dependencies from frozen lockfile
+        run: bun install --frozen-lockfile
+      - name: Type check
+        run: bunx tsc --noEmit
+      - name: Lint
+        run: bun run lint
+      - name: Frontend regression tests
+        run: bun test tests/frontend
+      - name: Production build
+        run: bun run build
+      - name: Install isolated browser runner
+        run: |
+          npm install --prefix /tmp/croptwist-browser playwright@1.56.1
+          /tmp/croptwist-browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Run standalone production server and browser smoke
+        run: |
+          CROPTWIST_API_ORIGIN=http://127.0.0.1:9 PORT=3000 HOSTNAME=127.0.0.1 \
+            nohup node .next/standalone/server.js > /tmp/croptwist-m2-web.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fs http://127.0.0.1:3000/ >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/ >/dev/null
+          NODE_PATH=/tmp/croptwist-browser/node_modules node scripts/m2-browser-smoke.mjs
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m2-clean-room-browser-evidence
+          path: |
+            m2-desktop-en.png
+            m2-mobile-ar.png
+            /tmp/croptwist-m2-web.log
+          if-no-files-found: warn
