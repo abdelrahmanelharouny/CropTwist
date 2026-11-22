@@ -201,6 +201,13 @@ def evaluate_stratified_rankings(
     are fail-closed: aggregate scores are not returned when a required
     language has no judged queries.
     """
+    if (
+        not isinstance(query_ids, list)
+        or not query_ids
+        or any(not isinstance(qid, str) or not qid.strip() for qid in query_ids)
+        or len(set(query_ids)) != len(query_ids)
+    ):
+        raise ValueError("benchmark query IDs must be non-empty unique strings")
     if not isinstance(query_languages, dict):
         raise ValueError("query language labels must be an object")
     if set(query_ids) - set(query_languages):
@@ -216,8 +223,10 @@ def evaluate_stratified_rankings(
         not isinstance(required_groups, tuple)
         or not required_groups
         or any(not isinstance(group, str) or not group.strip() for group in required_groups)
-        or len(set(required_groups)) != len(required_groups)
     ):
+        raise ValueError("required language groups must be unique non-empty strings")
+    normalized_required = tuple(group.strip().lower().split("-", 1)[0] for group in required_groups)
+    if len(set(normalized_required)) != len(normalized_required):
         raise ValueError("required language groups must be unique non-empty strings")
 
     normalized = {
@@ -225,7 +234,7 @@ def evaluate_stratified_rankings(
         for qid in query_ids
     }
     present = set(normalized.values())
-    missing = sorted(set(required_groups) - present)
+    missing = sorted(set(normalized_required) - present)
     if missing:
         raise ValueError(f"benchmark is missing required language groups: {', '.join(missing)}")
 
@@ -248,7 +257,7 @@ def evaluate_stratified_rankings(
         )
     return {
         "query_count": len(query_ids),
-        "required_language_groups": list(required_groups),
+        "required_language_groups": list(normalized_required),
         "language_query_counts": {
             group: sum(1 for language in normalized.values() if language == group)
             for group in sorted(present)
