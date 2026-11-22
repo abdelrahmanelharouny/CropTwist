@@ -91,6 +91,19 @@ def _safe_warning_reason_codes(warnings: list[str]) -> list[str]:
     return sorted(found)
 
 
+
+
+def _safe_warning_http_statuses(warnings: list[str]) -> list[int]:
+    found: set[int] = set()
+    for warning in warnings[:20]:
+        if not isinstance(warning, str):
+            continue
+        for match in re.finditer(r"http_status:([1-5][0-9]{2})", warning):
+            found.add(int(match.group(1)))
+    return sorted(found)
+
+
+
 def main() -> int:
     evidence: dict[str, object] = {
         "test": "m1_public_data_smoke",
@@ -153,6 +166,7 @@ def main() -> int:
                     "observation_count": len(result.observations),
                     "warning_count": len(result.warnings),
                     "warning_reason_codes": _safe_warning_reason_codes(result.warnings),
+                    "warning_http_statuses": _safe_warning_http_statuses(result.warnings),
                     "coverage": result.coverage,
                 }
                 if not result.observations:
