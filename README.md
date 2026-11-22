@@ -36,14 +36,14 @@ All analytics artifacts are immutable and checksummed; every module exposes `/ve
 ├── db/                           # user-space PostgreSQL runtime (gitignored data)
 └── mini-services/fieldshift-api/ # FastAPI backend (modular monolith)
     ├── app/                      # api/v1 routers, domains, feature/rotation/water/soil/… engines
-    ├── migrations/               # Alembic (current head: 0023_p07_field_reports)
+    ├── migrations/               # Alembic (current head: 0029_durable_artifacts)
     ├── tests/                    # pytest: unit / integration / contract (real PostGIS)
     ├── docs/                     # backend docs cited from the code
     ├── Dockerfile                # python:3.12-slim, non-root, healthcheck
     └── .env.example              # annotated CROPTWIST_* template
 ```
 
-The backend is a **modular monolith**: one FastAPI service (`uvicorn app.main:app`) with versioned routers and SQLAlchemy/Alembic schema on PostgreSQL 16 + PostGIS. The frontend calls relative `/api/v1` URLs; Next rewrites them to the server-only `CROPTWIST_API_ORIGIN`. Local direct development defaults to `127.0.0.1:3030`; Compose explicitly supplies `http://api:3030`; Vercel requires an HTTPS origin. Browser helpers no longer require the sandbox-only `XTransformPort` gateway query. The current revision is `0023_p07_field_reports`; use the migration files and master audit as the source of truth rather than older table-count notes.
+The backend is a **modular monolith**: one FastAPI service (`uvicorn app.main:app`) with versioned routers and SQLAlchemy/Alembic schema on PostgreSQL 16 + PostGIS. The frontend calls relative `/api/v1` URLs; Next rewrites them to the server-only `CROPTWIST_API_ORIGIN`. Local direct development defaults to `127.0.0.1:3030`; Compose explicitly supplies `http://api:3030`; Vercel requires an HTTPS origin. Browser helpers no longer require the sandbox-only `XTransformPort` gateway query. The current revision is `0029_durable_artifacts`; use the migration files and master audit as the source of truth rather than older table-count notes.
 
 ## Quickstart (Docker Compose)
 
