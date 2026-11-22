@@ -90,13 +90,19 @@ async def probe_provider(name: str) -> dict[str, Any]:
             "provider_schema_unsupported_or_invalid",
         }
         safe_category = category if isinstance(category, str) and category in safe_categories else "provider_probe_failed"
-        return {
+        evidence = {
             "provider": provider.name,
             "model": getattr(provider, "model", None),
             "status": "failed",
             "error_category": safe_category[:80],
             "latency_ms": max(0, round((perf_counter() - started) * 1000)),
         }
+        # HTTP status is a bounded diagnostic signal (e.g. 429 vs 503), unlike
+        # response bodies, headers, URLs, or arbitrary exception attributes.
+        http_status = getattr(exc, "http_status", None)
+        if isinstance(http_status, int) and not isinstance(http_status, bool) and 100 <= http_status <= 599:
+            evidence["http_status"] = http_status
+        return evidence
     latency_ms = max(0, round((perf_counter() - started) * 1000))
     if result is None or not isinstance(getattr(result, "content", None), str) or not result.content.strip():
         return {"provider": provider.name, "model": getattr(provider, "model", None), "status": "empty_response", "latency_ms": latency_ms}
