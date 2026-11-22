@@ -55,8 +55,6 @@ class AISettings(BaseSettings):
     ollama_keep_alive: str = Field(default="5m", min_length=1, max_length=16)
     llm_provider_order: str = "ollama,gemini,groq,openrouter"
 
-    llm_provider_order: str = "gemini,groq,openrouter"
-
     ai_provider_timeout_seconds: float = Field(default=25.0, gt=0, le=120)
     ai_provider_connect_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     ai_provider_max_retries: int = Field(default=1, ge=0, le=3)
