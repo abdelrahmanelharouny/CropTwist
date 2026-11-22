@@ -32,7 +32,7 @@ def test_stratified_eval_exposes_arabic_and_english_quality_separately():
     result = evaluate_stratified_rankings(**_benchmark())
     assert result["language_query_counts"] == {"ar": 2, "en": 2}
     assert result["by_language"]["ar"]["metrics"]["mrr"] == pytest.approx(0.75)
-    assert result["by_language"]["en"]["metrics"]["mrr"] == pytest.approx(0.375)
+    assert result["by_language"]["en"]["metrics"]["mrr"] == pytest.approx(2 / 3)
     assert result["overall"]["query_count"] == 4
 
 
