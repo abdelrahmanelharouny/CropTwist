@@ -72,15 +72,30 @@ jobs:
       - name: Assert both databases are empty before migration
         run: |
           python - <<'PY'
-          import os
-          from sqlalchemy import create_engine, inspect
+          from sqlalchemy import create_engine, text
           for port, name in [(5433, "croptwist_clean_a"), (5434, "croptwist_clean_b")]:
               url = f"postgresql+psycopg2://postgres:postgres@127.0.0.1:{port}/{name}"
               engine = create_engine(url)
-              tables = inspect(engine).get_table_names(schema="public")
-              assert not tables, f"{name} was not empty: {tables}"
+              with engine.connect() as connection:
+                  # PostGIS preloads spatial_ref_sys and other extension-owned
+                  # objects. A clean application DB excludes extension-owned
+                  # relations but must contain no user/application relations.
+                  tables = connection.execute(text("""
+                      SELECT n.nspname || '.' || c.relname
+                      FROM pg_class c
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                      WHERE n.nspname = 'public'
+                        AND c.relkind IN ('r', 'p', 'v', 'm')
+                        AND NOT EXISTS (
+                          SELECT 1 FROM pg_depend d
+                          WHERE d.classid = 'pg_class'::regclass
+                            AND d.objid = c.oid AND d.deptype = 'e'
+                        )
+                      ORDER BY 1
+                  """)).scalars().all()
               engine.dispose()
-              print(f"{name}: empty public schema confirmed")
+              assert not tables, f"{name} contains application objects before migration: {tables}"
+              print(f"{name}: clean application schema confirmed (PostGIS extension objects excluded)")
           PY
       - name: First migration pass on independent databases
         run: |
