@@ -1,6 +1,6 @@
 # M1 Safe Live Validation Runbook
 
-Status: prepared on an isolated branch; **not executed against live providers**.
+Status: executed against public providers and credential-enabled protected probes on 2026-11-23 UTC; **M1 remains open**. GitHub Actions run 45079454774 (commit `5c8c5ece4f1974a86dfb685bc9573d166c4e3e51`) verified NASA/CDSE public metadata and a real WaPOR COG window (1,681 valid pixels), detected configured credentials, but did not pass the protected acceptance gates: NASA returned zero observations for its selected scene with one warning, CDSE returned sanitized `ProviderUnavailable`, and Gemini's fixed prompt timed out at ~20 seconds. See the sanitized `m1-public-data-smoke-evidence` artifact attached to that run. Do not treat credential detection as provider acceptance.
 Target: validate provider connectivity and bounded data reads without changing production state.
 
 ## Safety rules
