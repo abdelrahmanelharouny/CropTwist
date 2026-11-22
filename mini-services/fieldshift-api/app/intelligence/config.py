@@ -7,7 +7,6 @@ provider data-handling terms and enable the relevant privacy gates.
 from __future__ import annotations
 
 from functools import lru_cache
-from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -55,6 +54,8 @@ class AISettings(BaseSettings):
     ollama_keep_alive: str = Field(default="5m", min_length=1, max_length=16)
     llm_provider_order: str = "ollama,gemini,groq,openrouter"
 
+    llm_provider_order: str = "gemini,groq,openrouter"
+
     ai_provider_timeout_seconds: float = Field(default=25.0, gt=0, le=120)
     ai_provider_connect_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     ai_provider_max_retries: int = Field(default=1, ge=0, le=3)
@@ -75,6 +76,9 @@ class AISettings(BaseSettings):
     openrouter_allow_field_data: bool = False
     ai_knowledge_allow_documents_to_embedding_provider: bool = False
     ai_knowledge_allow_queries_to_embedding_provider: bool = False
+    ai_knowledge_embedding_enabled: bool = False
+    ai_knowledge_embedding_model: str = "intfloat/multilingual-e5-small"
+    ai_knowledge_embedding_cache_dir: str = ""
 
     # Retrieval and feedback operational limits. No default corpus is bundled.
     ai_knowledge_max_document_chars: int = Field(default=200_000, ge=1000, le=2_000_000)
