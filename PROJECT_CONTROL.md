@@ -10,12 +10,12 @@ This file is the current coordination index. Historical reports dated 2026-11-14
 ## Current status
 
 - **M1 Data & AI:** M1-A through M1-D foundations are integrated. M1-E local Qwen/Ollama is now merged in PR [#24](https://github.com/abdelrahmanelharouny/CropTwist/pull/24) after both backend/PostGIS and frontend CI jobs passed. Ollama remains disabled by default. Numerical parity, multilingual retrieval benchmark, live FAO/WaPOR reads and live provider checks remain evidence gates.
-- **M2 Clean-room Release:** CI passed on PR #28 head `1a09ac7` (two independent PostGIS databases, idempotent migrations, schema parity, full backend/E2E, frontend production build, desktop + Arabic RTL browser journeys). That head is 5 commits behind current main; port/rebase and rerun exact-head CI before merge.
+- **M2 Clean-room Release:** PR #37 is the current-main candidate. Frontend production build and desktop/Arabic RTL browser journey passed; the two-database PostGIS migration/idempotency/schema-parity and full backend/E2E job is still running on exact head `579a008`. PR #28 is stale and should be closed only after PR #37 passes.
 - **M3 GIS/Satellite:** PR #32 merged a missing-CRS guard and acceptance notes. Live HLS/Sentinel asset reads, Fmask propagation, projected-CRS field-window correctness, quality-mask coverage and durable job lifecycle still require verification.
 - **M4 Knowledge/Evidence:** PR #29 merged stratified Arabic/English retrieval evaluation. E5 is `intfloat/multilingual-e5-small` (384-D), with `query:`/`passage:` prefixes; reviewed relevance judgments, live retrieval evidence, citation checks and agronomist review remain.
 - **M5–M7 Agricultural Intelligence:** PR #33 merged the M7.8 execution guard. Engines and scenarios exist; optimizer, water/soil arithmetic, scenario evidence and digital-twin integrity need consolidated scientific validation. M7.8 remains blocked until a real forecast/projection provider and method are approved.
 - **P2/P3 SaaS:** PR #31 merged webhook SSRF/redirect regression hardening; PRs #19–23 integrated role-aware billing UX, notification pagination, interval scoring and analytics entitlement fixes. Live payment provider, production email and full end-to-end lifecycle acceptance remain.
-- **Production:** not accepted. Staging API/Worker/PostGIS are online with TLS and bounded PostgreSQL raster storage. PR #35 is ready for review but not merged. Production still requires S3 bucket configuration, live provider secrets, email/payment providers, monitoring, backups and recovery evidence.
+- **Production:** not accepted. Staging API/Worker/PostGIS are online with TLS and bounded PostgreSQL raster storage. A staging S3 bucket exists, but the S3 switch and source update remain staged, not applied. PR #35's frontend and prior staging smoke checks passed; latest backend CI is still running. Production still requires its own S3 configuration, live provider secrets, email/payment providers, monitoring, backups and recovery evidence.
 - **UI/UX:** PR #30 merged keyboard focus and reduced-motion support; full visual redesign and responsive/browser acceptance remain mandatory before production. The 104-file redesign branch is stale and must not be merged wholesale.
 
 ## Active parallel workstreams
@@ -44,7 +44,7 @@ Workstream acceptance specifications live under `docs/workstreams/`. UI/UX must 
 
 ## Current pending M1 documentation PR
 
-PR [#35](https://github.com/abdelrahmanelharouny/CropTwist/pull/35) contains the staging PostGIS TLS and bounded storage deployment work. It is out of draft and all backend/frontend/staging smoke checks passed; it remains unmerged pending review. PR [#36](https://github.com/abdelrahmanelharouny/CropTwist/pull/36) fixes the missing boto3 dependency required by the existing S3 raster backend; CI is running.
+PR [#35](https://github.com/abdelrahmanelharouny/CropTwist/pull/35) contains staging PostGIS TLS, storage smoke and the required boto3 dependency. Frontend CI and the previous staging smoke passed; latest exact-head backend CI remains in progress. Live staging smoke is manual-only so a PR check cannot pass against an unrelated deployed revision. PR [#36](https://github.com/abdelrahmanelharouny/CropTwist/pull/36) duplicates the boto3 dependency already included in #35 and should be closed after #35 is accepted. PR [#37](https://github.com/abdelrahmanelharouny/CropTwist/pull/37) is the current-main M2 clean-room candidate; exact-head backend checks are still in progress.
 
 ## Evidence discipline
 
