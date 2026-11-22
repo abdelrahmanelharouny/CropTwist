@@ -87,6 +87,8 @@ def _safe_warning_reason_codes(warnings: list[str]) -> list[str]:
             found.add("scl_quality_asset_missing")
         for match in re.finditer(r"\(([A-Za-z][A-Za-z0-9_]{0,63})\)", warning):
             found.add(match.group(1))
+        for match in re.finditer(r"failure_code:([a-z0-9_]{1,64})", warning):
+            found.add(match.group(1))
     return sorted(found)
 
 
