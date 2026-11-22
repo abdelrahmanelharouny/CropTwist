@@ -181,3 +181,44 @@ def test_legacy_bridge_probe_marks_only_fixed_synthetic_prompt_non_sensitive(mon
     assert result["status"] == "live_verified"
     assert captured["kwargs"]["field_sensitive"] is False
     assert captured["messages"][-1]["content"] == "Reply with exactly CROPTWIST_PROVIDER_OK."
+
+
+def test_probe_exposes_only_bounded_http_status_for_transient_failure(monkeypatch):
+    class TransientFailure(RuntimeError):
+        category = "provider_transient_http"
+        http_status = 429
+
+    class Broken:
+        name = "gemini"
+        model = "gemini-test"
+        configured = True
+
+        async def generate(self, messages, **kwargs):
+            raise TransientFailure("raw response body must never escape")
+
+    monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Broken())
+    result = asyncio.run(provider_diagnostics.probe_provider("gemini"))
+    assert result["status"] == "failed"
+    assert result["error_category"] == "provider_transient_http"
+    assert result["http_status"] == 429
+    assert "raw response body" not in str(result)
+
+
+def test_probe_omits_invalid_http_status(monkeypatch):
+    class MalformedFailure(RuntimeError):
+        category = "provider_transient_http"
+        http_status = "429 with secret"
+
+    class Broken:
+        name = "gemini"
+        model = "gemini-test"
+        configured = True
+
+        async def generate(self, messages, **kwargs):
+            raise MalformedFailure("upstream failed")
+
+    monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Broken())
+    result = asyncio.run(provider_diagnostics.probe_provider("gemini"))
+    assert result["error_category"] == "provider_transient_http"
+    assert "http_status" not in result
+    assert "secret" not in str(result)
