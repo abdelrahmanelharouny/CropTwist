@@ -1,7 +1,7 @@
 """Provider-neutral contracts and registry for CropTwist AI.
 
 The legacy bridge remains available as an explicit compatibility adapter,
-but the configured default order is Gemini, Groq, then OpenRouter.
+Ollama is an opt-in loopback provider for private context; hosted providers remain subject to explicit data-egress approval.
 """
 from __future__ import annotations
 
@@ -219,7 +219,7 @@ class ProviderRegistry:
 provider_registry = ProviderRegistry()
 provider_registry.register(LegacyBridgeProvider())
 
-_DEFAULT_PROVIDER_NAMES = frozenset({"gemini", "groq", "openrouter"})
+_DEFAULT_PROVIDER_NAMES = frozenset({"ollama", "gemini", "groq", "openrouter"})
 _DEFAULT_PROVIDER_LOCK = Lock()
 _DEFAULT_PROVIDERS_LOADED = False
 

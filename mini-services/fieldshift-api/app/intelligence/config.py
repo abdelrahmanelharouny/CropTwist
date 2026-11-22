@@ -7,6 +7,7 @@ provider data-handling terms and enable the relevant privacy gates.
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -44,7 +45,15 @@ class AISettings(BaseSettings):
     groq_model: str = "openai/gpt-oss-120b"
     openrouter_api_key: SecretStr = SecretStr("")
     openrouter_model: str = "nvidia/nemotron-3.5-super-vl:free"
-    llm_provider_order: str = "gemini,groq,openrouter"
+
+    # Local-only inference for private field/farmer context. Ollama must bind
+    # to loopback; remote hosts are rejected rather than treated as private.
+    ollama_enabled: bool = False
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3:4b-instruct-2507-q4_K_M"
+    ollama_num_ctx: int = Field(default=8192, ge=2048, le=16384)
+    ollama_keep_alive: str = Field(default="5m", min_length=1, max_length=16)
+    llm_provider_order: str = "ollama,gemini,groq,openrouter"
 
     ai_provider_timeout_seconds: float = Field(default=25.0, gt=0, le=120)
     ai_provider_connect_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
@@ -81,11 +90,40 @@ class AISettings(BaseSettings):
     @field_validator("llm_provider_order")
     @classmethod
     def validate_provider_order(cls, value: str) -> str:
-        allowed = {"gemini", "groq", "openrouter", "legacy-llm-bridge"}
+        allowed = {"ollama", "gemini", "groq", "openrouter", "legacy-llm-bridge"}
         names = [part.strip().lower() for part in value.split(",") if part.strip()]
         if not names or len(names) != len(set(names)) or any(name not in allowed for name in names):
             raise ValueError("llm_provider_order must be a unique comma-separated list of registered providers")
         return ",".join(names)
+
+    @field_validator("ollama_base_url")
+    @classmethod
+    def validate_ollama_base_url(cls, value: str) -> str:
+        try:
+            parsed = urlsplit(value.strip())
+            port = parsed.port
+        except (AttributeError, ValueError):
+            raise ValueError("ollama_base_url must be a valid loopback HTTP URL") from None
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+            or (port is not None and not 1 <= port <= 65535)
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in ("", "/")
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("ollama_base_url must target a loopback HTTP host only")
+        return value.strip().rstrip("/")
+
+    @field_validator("ollama_model")
+    @classmethod
+    def validate_ollama_model(cls, value: str) -> str:
+        value = value.strip()
+        if not value or len(value) > 160 or any(ord(char) < 32 for char in value):
+            raise ValueError("Ollama model identifier is invalid")
+        return value
 
     @field_validator("gemini_model", "groq_model", "openrouter_model")
     @classmethod
