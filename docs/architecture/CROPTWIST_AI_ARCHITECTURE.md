@@ -150,3 +150,30 @@ A predictive service is a distinct layer from deterministic engine rules and LLM
 - Missing evidence remains missing, not a zero/normal score.
 - LLM narrative, document retrieval, or feedback cannot silently change deterministic rules or train/deploy a model.
 - External source/service availability, payment delivery, email delivery, and production readiness are claims requiring current environment evidence.
+
+## Local private-context provider (M1-E)
+
+The opt-in local provider is Ollama serving `Qwen3-4B-Instruct-2507` with the
+`qwen3:4b-instruct-2507-q4_K_M` quantization. The adapter uses Ollama's native
+`POST /api/chat` contract (not its experimental OpenAI compatibility layer),
+passes a bounded `num_ctx` (default 8192, maximum 16384), and supports native
+JSON-schema output. It is disabled by default and never downloads weights
+during API startup.
+
+The configured Ollama URL is validated as loopback HTTP only
+(`localhost`, `127.0.0.1` or `::1`). For field-sensitive requests, only
+the explicitly enabled loopback Ollama provider is eligible unless the
+separate external-provider approval is explicitly enabled. If Ollama is
+unavailable and external approval remains off, the request must fall back to
+deterministic rules; it must not silently send private data to Gemini, Groq,
+OpenRouter or the legacy bridge.
+
+Model weights are approximately 2.5 GB for the Q4_K_M artifact. This is a
+developer/controlled-host runtime, not a Railway API default. The model must
+be installed separately and smoke-tested on the target CPU/RAM before
+production use. A mock transport test proves the HTTP contract only; it does
+not prove Arabic quality, latency, RAM consumption or real local inference.
+
+References: [Ollama native chat API](https://docs.ollama.com/api/chat),
+[Qwen3 Ollama tag](https://ollama.com/library/qwen3/tags),
+[Qwen3-4B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507).
