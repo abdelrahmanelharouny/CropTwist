@@ -5,6 +5,7 @@ on:
     branches:
       - ops/staging-postgis-tls
   workflow_dispatch:
+  pull_request:
 
 permissions:
   contents: read
