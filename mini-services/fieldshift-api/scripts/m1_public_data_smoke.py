@@ -146,6 +146,7 @@ def main() -> int:
             actual_resolution_m_xy = [abs(float(x_metres)), abs(float(y_metres))]
             actual_crs = dataset.crs.to_string()
             raster_nodata = dataset.nodata
+            raster_is_tiled = dataset.is_tiled
             raster_overviews = dataset.overviews(1)
         evidence["wapor_egypt_l2_aeti"] = {
             "status": "asset_window_verified",
@@ -165,7 +166,7 @@ def main() -> int:
             "nodata_pixel_count": window.nodata_pixel_count,
             "raw_mean": window.raw_mean,
             "scaled_mean": window.scaled_mean,
-            "tiled": window.asset_layout == "COG" or window.asset_layout is not None,
+            "tiled": raster_is_tiled,
             "overview_levels": list(window.overview_levels),
             "license": window.license,
         }
