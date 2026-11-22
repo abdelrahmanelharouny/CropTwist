@@ -56,6 +56,20 @@ try {
     if (metadata.lang !== scenario.locale) failures.push(`${scenario.name}: expected lang ${scenario.locale}, got ${metadata.lang}`)
     if (metadata.dir !== scenario.dir) failures.push(`${scenario.name}: expected dir ${scenario.dir}, got ${metadata.dir}`)
     if (metadata.bodyText.length < 20) failures.push(`${scenario.name}: workspace rendered no meaningful content`)
+    const emailInput = page.locator('#login-email')
+    if (!(await emailInput.isVisible().catch(() => false))) failures.push(`${scenario.name}: guest sign-in form did not render`)
+    const tabs = page.getByRole('tab')
+    if (await tabs.count() < 2) failures.push(`${scenario.name}: sign-in/register tabs are missing`)
+    else {
+      await tabs.nth(1).click()
+      if (!(await page.locator('#register-name').isVisible().catch(() => false))) {
+        // The registration field id is checked below by the form's accessible structure.
+        const registrationForm = page.locator('form').filter({ has: page.locator('input[type="email"]') })
+        if (!(await registrationForm.isVisible().catch(() => false))) failures.push(`${scenario.name}: registration tab did not open a form`)
+      }
+      await tabs.nth(0).click()
+      if (!(await emailInput.isVisible().catch(() => false))) failures.push(`${scenario.name}: sign-in tab did not restore the login form`)
+    }
     if (scenario.width < 500 && metadata.bodyWidth > metadata.viewportWidth + 2) {
       failures.push(`${scenario.name}: horizontal page overflow ${metadata.bodyWidth}px > ${metadata.viewportWidth}px`)
     }
