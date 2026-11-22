@@ -51,6 +51,15 @@ def main() -> None:
                     key=lambda item: item.get("name") or "",
                 ),
             })
+        views = [
+            {"name": name, "definition": inspector.get_view_definition(name, schema=schema)}
+            for name in sorted(inspector.get_view_names(schema=schema))
+        ]
+        materialized_views = [
+            {"name": name}
+            for name in sorted(inspector.get_materialized_view_names(schema=schema))
+        ]
+        sequences = sorted(inspector.get_sequence_names(schema=schema))
         with engine.connect() as connection:
             extensions = [
                 {"name": row[0], "version": row[1]}
@@ -58,8 +67,52 @@ def main() -> None:
                     text("SELECT extname, extversion FROM pg_extension ORDER BY extname")
                 )
             ]
-        print(json.dumps({"schema": schema, "extensions": extensions, "tables": tables},
-                         sort_keys=True, indent=2, default=str))
+            enums = [
+                {"name": row[0], "labels": row[1]}
+                for row in connection.execute(text("""
+                    SELECT t.typname, array_agg(e.enumlabel ORDER BY e.enumsortorder)
+                    FROM pg_type t
+                    JOIN pg_enum e ON e.enumtypid = t.oid
+                    JOIN pg_namespace n ON n.oid = t.typnamespace
+                    WHERE n.nspname = 'public'
+                    GROUP BY t.typname ORDER BY t.typname
+                """))
+            ]
+            policies = [
+                {
+                    "table": row[0], "name": row[1], "permissive": row[2],
+                    "roles": row[3], "command": row[4], "using": row[5],
+                    "with_check": row[6],
+                }
+                for row in connection.execute(text("""
+                    SELECT tablename, policyname, permissive, roles, cmd, qual, with_check
+                    FROM pg_policies WHERE schemaname = 'public'
+                    ORDER BY tablename, policyname
+                """))
+            ]
+            triggers = [
+                {"table": row[0], "name": row[1], "definition": row[2]}
+                for row in connection.execute(text("""
+                    SELECT c.relname, t.tgname, pg_get_triggerdef(t.oid, true)
+                    FROM pg_trigger t
+                    JOIN pg_class c ON c.oid = t.tgrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public' AND NOT t.tgisinternal
+                    ORDER BY c.relname, t.tgname
+                """))
+            ]
+        snapshot = {
+            "schema": schema,
+            "extensions": extensions,
+            "tables": tables,
+            "views": views,
+            "materialized_views": materialized_views,
+            "sequences": sequences,
+            "enums": enums,
+            "row_level_security_policies": policies,
+            "triggers": triggers,
+        }
+        print(json.dumps(snapshot, sort_keys=True, indent=2, default=str))
     finally:
         engine.dispose()
 
