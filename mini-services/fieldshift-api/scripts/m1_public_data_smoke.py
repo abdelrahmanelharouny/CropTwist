@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 from datetime import UTC, datetime, timedelta
 
@@ -34,6 +35,52 @@ AOI = {
 }
 START = datetime(2025, 1, 1, tzinfo=UTC)
 END = datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC)
+
+
+
+_SAFE_PROVIDER_REASON_CODES = {
+    "unsupported_s3_asset_host",
+    "cdse_s3_credentials_missing",
+    "missing_sentinel2_radiometric_offset",
+    "RasterioIOError",
+    "CRSError",
+    "ValueError",
+    "HTTPStatusError",
+    "ConnectError",
+    "ReadTimeout",
+    "TimeoutException",
+    "CPLE_OpenFailedError",
+    "CPLE_AppDefinedError",
+    "KeyError",
+    "RuntimeError",
+}
+
+
+def _safe_provider_failure(exc: Exception) -> dict[str, str]:
+    """Return allowlisted failure identifiers only; never serialize messages/details."""
+    result = {"error_type": type(exc).__name__}
+    details = getattr(exc, "details", None)
+    if isinstance(details, list):
+        for item in details[:5]:
+            if not isinstance(item, dict):
+                continue
+            reason = item.get("reason")
+            if isinstance(reason, str) and reason in _SAFE_PROVIDER_REASON_CODES:
+                result["reason_code"] = reason
+                break
+    return result
+
+
+def _safe_warning_reason_codes(warnings: list[str]) -> list[str]:
+    """Extract only allowlisted exception class names from provider warning strings."""
+    found: set[str] = set()
+    for warning in warnings[:20]:
+        if not isinstance(warning, str):
+            continue
+        for reason in _SAFE_PROVIDER_REASON_CODES:
+            if re.search(r"\\(" + re.escape(reason) + r"\\)", warning):
+                found.add(reason)
+    return sorted(found)
 
 
 def main() -> int:
@@ -69,6 +116,7 @@ def main() -> int:
                 (scene.acquired_at.isoformat() for scene in scenes), default=None
             ),
             "warning_count": len(warnings),
+            "warning_reason_codes": _safe_warning_reason_codes(warnings),
             "protected_asset_read": "not_attempted_no_earthdata_secret",
         }
         if not scenes:
@@ -103,7 +151,7 @@ def main() -> int:
             except Exception as exc:
                 evidence["nasa_hls"]["protected_asset_read"] = {
                     "status": "failed",
-                    "error_type": type(exc).__name__,
+                    **_safe_provider_failure(exc),
                 }
                 failures.append("NASA HLS protected asset-window read failed")
         else:
@@ -163,7 +211,7 @@ def main() -> int:
             except Exception as exc:
                 evidence["copernicus_sentinel2"]["protected_asset_read"] = {
                     "status": "failed",
-                    "error_type": type(exc).__name__,
+                    **_safe_provider_failure(exc),
                 }
                 failures.append("CDSE protected S3 asset-window read failed")
         else:
