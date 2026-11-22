@@ -26,6 +26,8 @@ Target: validate provider connectivity and bounded data reads without changing p
 
 Do not use the Copernicus account password in place of the S3 key pair. WaPOR v3 catalogue and public COG access do not require a user API key.
 
+For the GitHub Actions protected-probe job, add these as **repository Actions secrets** (Settings → Secrets and variables → Actions), never as plain variables: `CROPTWIST_GEMINI_API_KEY`, `CROPTWIST_EARTHDATA_BEARER_TOKEN`, `CROPTWIST_CDSE_S3_ACCESS_KEY`, and `CROPTWIST_CDSE_S3_SECRET_KEY`. The public smoke still runs without them and reports protected probes as blocked; once added, rerun the workflow to perform the fixed Gemini probe and one bounded NASA/CDSE asset-window read. Optional fallback probes use `CROPTWIST_GROQ_API_KEY` and `CROPTWIST_OPENROUTER_API_KEY` only when separately added.
+
 ## Phase 0 — local safety and offline regression
 
 From mini-services/fieldshift-api:
@@ -68,6 +70,8 @@ For each source, save only sanitized metadata: provider/product identifier, acqu
 
 ## Phase 2 — protected asset reads (one scene / one small window)
 
+The executable `m1_public_data_smoke.py` now performs these bounded reads automatically when the corresponding GitHub Actions secrets are present: one lowest-cloud NASA HLS scene selected from the public Mallawi metadata results, and a one-day Sentinel-2 L2A window. Missing secrets are reported as blocked, not passed.
+
 Run only in a disposable local/staging environment with the credentials loaded from the secret manager.
 
 ### NASA HLS
@@ -97,6 +101,8 @@ Run only in a disposable local/staging environment with the credentials loaded f
 A successful catalogue response is not a successful raster-read test. The public smoke performs a real WaPOR COG window read; NASA and CDSE remain metadata-only until their protected asset reads are run with the respective credentials. A synthetic or mocked raster is never evidence of live data availability.
 
 ## Phase 3 — Gemini-first LLM connectivity (fixed prompt only)
+
+The public smoke workflow also calls the existing sanitized `probe_provider("gemini")` when `CROPTWIST_GEMINI_API_KEY` is present. It reports `blocked_missing_gemini_api_key` when the secret is absent; that is not a pass.
 
 From mini-services/fieldshift-api, with the key loaded locally:
 
