@@ -79,8 +79,15 @@ def _safe_warning_reason_codes(warnings: list[str]) -> list[str]:
     for warning in warnings[:20]:
         if not isinstance(warning, str):
             continue
-        for match in re.finditer(r"\(([A-Za-z][A-Za-z0-9_]{0,63})\)", warning):
-            found.add(match.group(1))
+        if "required band assets missing" in warning:
+            found.add("required_band_assets_missing")
+        if "Fmask QA asset is missing or not aligned" in warning:
+            found.add("fmask_missing_or_misaligned")
+        if "SCL quality asset missing" in warning:
+            found.add("scl_quality_asset_missing")
+        if "could not be read or validated" in warning:
+            for match in re.finditer(r"\(([A-Za-z][A-Za-z0-9_]{0,63})\)", warning):
+                found.add(match.group(1))
     return sorted(found)
 
 
@@ -145,6 +152,7 @@ def main() -> int:
                     "scene_id": best_scene.scene_id,
                     "observation_count": len(result.observations),
                     "warning_count": len(result.warnings),
+                    "warning_reason_codes": _safe_warning_reason_codes(result.warnings),
                     "coverage": result.coverage,
                 }
                 if not result.observations:
