@@ -41,7 +41,11 @@ def main() -> int:
         "test": "m1_public_data_smoke",
         "aoi": "public_mallawi_egypt_test_polygon",
         "date_range": [START.isoformat(), END.isoformat()],
-        "secrets_used": False,
+        "secrets_used": bool(
+            settings.earthdata_bearer_token
+            or (settings.cdse_s3_access_key and settings.cdse_s3_secret_key)
+            or ai_settings.gemini_api_key.get_secret_value()
+        ),
     }
     failures: list[str] = []
 
