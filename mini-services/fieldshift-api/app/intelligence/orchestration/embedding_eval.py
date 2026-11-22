@@ -226,6 +226,8 @@ def evaluate_stratified_rankings(
     ):
         raise ValueError("required language groups must be unique non-empty strings")
     normalized_required = tuple(group.strip().lower().split("-", 1)[0] for group in required_groups)
+    if any(not group or not group.isalpha() for group in normalized_required):
+        raise ValueError("required language groups must be unique non-empty strings")
     if len(set(normalized_required)) != len(normalized_required):
         raise ValueError("required language groups must be unique non-empty strings")
 
