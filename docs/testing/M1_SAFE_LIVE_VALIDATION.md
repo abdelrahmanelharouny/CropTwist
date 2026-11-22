@@ -9,7 +9,7 @@ Target: validate provider connectivity and bounded data reads without changing p
 - Never place credentials in source files, command-line arguments, notebooks, issue comments, CI logs, or chat.
 - Load secrets from a local secret manager or an untracked .env file. Confirm .env is ignored by Git before running.
 - Do not add credentials to Railway Production as part of this runbook. Do not deploy, enqueue production ingestion jobs, or write to production databases.
-- Keep field/farmer data out of OpenRouter probes. The existing provider probe sends only a fixed, non-sensitive test prompt.
+- Keep field/farmer data out of every hosted LLM probe. The primary configured provider is Gemini; Groq and OpenRouter are fallback providers. Every probe sends only a fixed, non-sensitive test prompt.
 - A provider is not accepted merely because authentication succeeds. Record the product, acquisition time, CRS, resolution, units/scale, valid-pixel count, provenance, and any warnings.
 - Keep raw responses and logs sanitized. Never print request headers, environment values, signed URLs, S3 keys, bearer tokens, or full exception bodies.
 
@@ -20,7 +20,9 @@ Target: validate provider connectivity and bounded data reads without changing p
 | NASA Earthdata | CROPTWIST_EARTHDATA_BEARER_TOKEN | Protected NASA HLS asset reads; CMR STAC discovery itself is public |
 | Copernicus CDSE | CROPTWIST_CDSE_S3_ACCESS_KEY | S3-compatible Sentinel-2 asset reads |
 | Copernicus CDSE | CROPTWIST_CDSE_S3_SECRET_KEY | S3-compatible Sentinel-2 asset reads |
-| OpenRouter | CROPTWIST_OPENROUTER_API_KEY | Explicit LLM connectivity probe |
+| Gemini (primary) | CROPTWIST_GEMINI_API_KEY | Primary LLM connectivity probe |
+| Groq (fallback) | CROPTWIST_GROQ_API_KEY | Fallback LLM connectivity probe |
+| OpenRouter (fallback) | CROPTWIST_OPENROUTER_API_KEY | Fallback LLM connectivity probe |
 
 Do not use the Copernicus account password in place of the S3 key pair. WaPOR v3 catalogue and public COG access do not require a user API key.
 
@@ -94,15 +96,15 @@ Run only in a disposable local/staging environment with the credentials loaded f
 
 A successful catalogue response is not a successful raster-read test. A synthetic or mocked raster is never evidence of live data availability.
 
-## Phase 3 — OpenRouter connectivity (fixed prompt only)
+## Phase 3 — Gemini-first LLM connectivity (fixed prompt only)
 
 From mini-services/fieldshift-api, with the key loaded locally:
 
 ~~~bash
-python scripts/probe_llm_providers.py --provider openrouter
+python scripts/probe_llm_providers.py --provider gemini --provider groq --provider openrouter
 ~~~
 
-Expected success status: live_verified. The probe uses a fixed, non-sensitive instruction and returns sanitized status evidence; it must not be used to submit field records, farmer notes, crop histories, or other user data.
+Expected primary success status: Gemini `live_verified`. Groq and OpenRouter are tested as fallbacks and may be `not_configured` if intentionally unused. The probe uses a fixed, non-sensitive instruction and returns sanitized status evidence; it must not be used to submit field records, farmer notes, crop histories, or other user data.
 
 Keep these independent data-sharing gates disabled unless separately reviewed and explicitly approved:
 
@@ -129,4 +131,4 @@ No relevance-labelled corpus is currently bundled; therefore no E5 quality score
 
 Record one row per provider with: test timestamp (UTC), environment name (never secret values), provider/product, test area identifier, date range, metadata discovery status, asset read status, CRS/resolution, units/scale verification, valid-pixel count, provenance completeness, sanitized error category, and reviewer.
 
-Do not mark M1 external-data validation complete until NASA HLS and CDSE each pass a real protected asset-window read, WaPOR passes a real Egypt COG-window read, OpenRouter returns live_verified, and the offline regression suite passes. E5 remains a separate quality gate requiring reviewed relevance judgements.
+Do not mark M1 external-data validation complete until NASA HLS and CDSE each pass a real protected asset-window read, WaPOR passes a real Egypt COG-window read, Gemini (the configured primary provider) returns live_verified, and the offline regression suite passes. Fallback-provider status is recorded separately. E5 remains a separate quality gate requiring reviewed relevance judgements.
