@@ -49,8 +49,7 @@ USER croptwist
 # Railway injects PORT=8080; local Compose overrides the command to bind 3030.
 EXPOSE 8080
 
-# Liveness probe without curl/wget: stdlib urllib against /api/v1/health.
-# (Readiness incl. the PostGIS check is /api/v1/health/ready.)
+# Container health is liveness-only; database/PostGIS readiness is exposed separately at /api/v1/health/ready.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
     CMD ["python", "-c", "import sys, urllib.request as u; r = u.urlopen('http://127.0.0.1:3030/api/v1/health', timeout=4); sys.exit(0 if r.status == 200 else 1)"]
 
@@ -67,5 +66,5 @@ CMD ["python", "-m", "app.worker", "--workers", "1"]
 FROM runtime AS api
 ENV PORT=3030
 HEALTHCHECK --interval=15s --timeout=6s --start-period=30s --retries=3 \
-    CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','3030')+'/api/v1/health/ready',timeout=5)"]
+    CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','3030')+'/api/v1/health',timeout=5)"]
 CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-3030}"]
