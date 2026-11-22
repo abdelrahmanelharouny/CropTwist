@@ -28,11 +28,11 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: croptwist_clean_a
+          POSTGRES_DB: croptwist_clean_a_test
         ports:
           - 5433:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d croptwist_clean_a"
+          --health-cmd "pg_isready -U postgres -d croptwist_clean_a_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -42,18 +42,18 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: croptwist_clean_b
+          POSTGRES_DB: croptwist_clean_b_test
         ports:
           - 5434:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d croptwist_clean_b"
+          --health-cmd "pg_isready -U postgres -d croptwist_clean_b_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
           --health-start-period 10s
     env:
-      CROPTWIST_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5433/croptwist_clean_a
-      CROPTWIST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5433/croptwist_clean_a
+      CROPTWIST_TEST_DB_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5433/croptwist_clean_a_test
+      CROPTWIST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5433/croptwist_clean_a_test
       PGPASSWORD: postgres
       CROPTWIST_DEV_MODE: "true"
       CROPTWIST_LLM_ENABLED: "false"
@@ -73,7 +73,7 @@ jobs:
         run: |
           python - <<'PY'
           from sqlalchemy import create_engine, text
-          for port, name in [(5433, "croptwist_clean_a"), (5434, "croptwist_clean_b")]:
+          for port, name in [(5433, "croptwist_clean_a_test"), (5434, "croptwist_clean_b_test")]:
               url = f"postgresql+psycopg2://postgres:postgres@127.0.0.1:{port}/{name}"
               engine = create_engine(url)
               with engine.connect() as connection:
@@ -100,21 +100,21 @@ jobs:
       - name: First migration pass on independent databases
         run: |
           alembic upgrade head
-          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b alembic upgrade head
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b_test alembic upgrade head
       - name: Second migration pass must be idempotent
         run: |
           alembic upgrade head
-          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b alembic upgrade head
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b_test alembic upgrade head
       - name: Verify Alembic head and ORM migration parity on both databases
         run: |
           alembic current
           alembic check
-          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b alembic current
-          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b alembic check
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b_test alembic current
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b_test alembic check
       - name: Compare deterministic schema inventories
         run: |
           python scripts/clean_room_schema_snapshot.py > /tmp/schema-a.json
-          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b python scripts/clean_room_schema_snapshot.py > /tmp/schema-b.json
+          CROPTWIST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5434/croptwist_clean_b_test python scripts/clean_room_schema_snapshot.py > /tmp/schema-b.json
           diff -u /tmp/schema-a.json /tmp/schema-b.json
           mkdir -p /tmp/croptwist-m2-artifacts
           cp /tmp/schema-a.json /tmp/croptwist-m2-artifacts/schema-a.json
