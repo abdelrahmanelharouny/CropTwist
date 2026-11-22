@@ -268,7 +268,8 @@ def main() -> int:
         evidence["gemini_primary_probe"] = "blocked_missing_gemini_api_key"
 
     evidence["failures"] = failures
-    evidence["overall_status"] = "passed" if not failures else "failed"
+    evidence["overall_status"] = "public_checks_passed" if not failures else "failed"
+    evidence["m1_acceptance_status"] = "not_closed"
     print(json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if not failures else 1
 
