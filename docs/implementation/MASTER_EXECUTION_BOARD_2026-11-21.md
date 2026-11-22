@@ -123,3 +123,30 @@ A milestone is complete only when:
 ### Main verification
 
 The post-integration main CI run for `631660aed96eb6af548698ecc686b42293f0a012` is still running. Alembic upgrade/idempotence/drift checks passed and frontend typecheck, lint, frontend tests and production build passed; backend pytest is still running. Do not call the integrated main fully green until backend pytest and E2E complete successfully.
+
+
+## Supervisor execution update — 2026-11-22 15:40 UTC+02
+
+**Latest main merge:** `26bed4a2a0c0ecc46d66884e50504d6c259b319b` (PR #16). PR #15 was merged immediately before it as `bdcf32e3b51d6583589206a5075cddf52aa62a74`.
+
+### Additional parallel work merged
+
+- **PR #15:** worker INFO logs now go to stdout, avoiding false Railway error classification. Exact-head CI run #666 passed both backend and frontend jobs; merged after reviewing the one-file delta against the then-current main.
+- **PR #16:** removes two tracked generated report artifacts while retaining runtime generation and ignore rules. Exact-head CI run #667 passed both backend and frontend jobs; merged after confirming the current-main delta contains only those two artifact deletions. This does not rewrite Git history or purge existing clones/caches.
+- **PRs #19, #20, #22 and #23:** merged after exact-head CI runs #625, #626, #654 and #644 respectively.
+
+### Local Qwen PR #18 — current verification
+
+- Current head: `4cf693722cd75824571c1c1128cb48eaed4d790d`; current-main comparison shows exactly seven Qwen-related files changed (loopback-only settings, adapter, routing, tests and documentation), with no overlapping worker/report changes.
+- CI run #674: frontend/typecheck/lint/tests/build and bridge typecheck passed. Backend pytest is still running; migration upgrade, idempotence and model-drift checks already passed. Do not merge until backend pytest and the E2E smoke complete on the exact head and the latest-main delta is revalidated.
+- Ollama remains disabled by default. Mocked CI does not establish that Ollama/model weights are installed, that Egyptian Arabic quality is adequate, or that target-host CPU/RAM/latency gates pass.
+
+### M1 status — implementation integrated, acceptance not yet complete
+
+- M1-A through M1-E core implementations are merged and their recorded PR CI runs passed.
+- Remaining evidence gates are real HLS/CDSE and WaPOR acquisition/raster smoke; upstream Presto numerical parity and verified Egypt crop labels before any crop classifier; real E5 warmup plus reviewed bilingual agronomy retrieval benchmark; and authorized provider smoke tests. None may be replaced by mocked fixtures or inferred from code presence.
+- The local Qwen adapter is an additional privacy-preserving implementation candidate, not permission to enable external field-data egress. Keep that setting false by default.
+
+### Release boundary
+
+M1's code foundations are substantially integrated, but M1 is **not release-accepted** until the live-data, model-parity, retrieval-quality and provider/runtime gates above are evidenced. M2 clean-room deployment remains a separate subsequent gate. No production deployment or secret mutation was performed by these merges.
