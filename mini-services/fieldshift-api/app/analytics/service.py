@@ -384,7 +384,18 @@ def _water_usage(
     metering is NOT implemented platform-wide, so irrigation volume is
     reported as missing unless observations exist."""
     if not field_ids:
-        return {"provenance": PROVENANCE_MISSING, "note": "No fields."}
+        # Keep the water_usage response shape stable for downstream consumers
+        # such as commercial_metrics, even when a farm has no fields yet.
+        return {
+            "precipitation": {
+                "provenance": PROVENANCE_MISSING,
+                "note": "No fields are registered for this farm.",
+            },
+            "irrigation": {
+                "provenance": PROVENANCE_MISSING,
+                "note": "No fields are registered for this farm.",
+            },
+        }
     # precipitation is in mm over area → m³ estimate (model-derived)
     rows = db.execute(
         select(Observation.field_id, func.sum(Observation.value))

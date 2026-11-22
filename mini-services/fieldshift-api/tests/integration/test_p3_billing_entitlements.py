@@ -681,3 +681,78 @@ class TestOrgMemberSeatCap:
         fourth = accept(d_headers, invite(d["user"]["email"], "viewer"))
         assert fourth.status_code == 402, fourth.text
         assert "max_org_members" in fourth.json()["error"]["message"]
+
+
+class TestAnalyticsEntitlement:
+    """analytics_access is a backend capability gate, not a UI-only hint."""
+
+    def test_free_plan_blocks_all_analytics_routes_and_professional_unlocks(self, client, auth_headers):
+        headers, user = auth_headers
+        org = _org_id(user)
+        farm = _create_farm(client, headers, "Analytics Entitlement Farm")
+        assert farm.status_code == 201, farm.text
+        farm_id = farm.json()["id"]
+        params = {"date_from": "2026-01-01", "date_to": "2026-12-31"}
+
+        requests = [
+            client.get(
+                "/api/v1/analytics/executive-dashboard",
+                headers=headers,
+                params={"organization_id": org},
+            ),
+            client.get(
+                f"/api/v1/analytics/farm-performance/{farm_id}",
+                headers=headers,
+                params=params,
+            ),
+            client.get(
+                "/api/v1/analytics/commercial-metrics",
+                headers=headers,
+                params={"farm_id": farm_id, **params},
+            ),
+            client.get(
+                "/api/v1/analytics/benchmarks",
+                headers=headers,
+                params={"organization_id": org, "scope": "farm", **params},
+            ),
+        ]
+        assert [response.status_code for response in requests] == [403, 403, 403, 403]
+        assert all(
+            response.json()["error"]["code"] == "FORBIDDEN"
+            for response in requests
+        )
+
+        _start_subscription(client, headers, org, "professional")
+        unlocked = [
+            client.get(
+                "/api/v1/analytics/executive-dashboard",
+                headers=headers,
+                params={"organization_id": org},
+            ),
+            client.get(
+                f"/api/v1/analytics/farm-performance/{farm_id}",
+                headers=headers,
+                params=params,
+            ),
+            client.get(
+                "/api/v1/analytics/commercial-metrics",
+                headers=headers,
+                params={"farm_id": farm_id, **params},
+            ),
+            client.get(
+                "/api/v1/analytics/benchmarks",
+                headers=headers,
+                params={"organization_id": org, "scope": "farm", **params},
+            ),
+        ]
+        assert [response.status_code for response in unlocked] == [200, 200, 200, 200]
+
+    def test_analytics_entitlement_does_not_disclose_cross_tenant_plan(self, client):
+        owner_headers, owner = _register(client, "AnalyticsOwner")
+        _other_headers, other = _register(client, "AnalyticsOther")
+        response = client.get(
+            "/api/v1/analytics/executive-dashboard",
+            headers=owner_headers,
+            params={"organization_id": _org_id(other)},
+        )
+        assert response.status_code == 403

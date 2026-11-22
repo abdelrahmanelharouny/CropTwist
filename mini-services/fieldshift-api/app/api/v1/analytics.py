@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.analytics import service as analytics_service
+from app.billing import entitlements
 from app.core.database import get_db
 from app.core.errors import Forbidden, ValidationFailed
 from app.domains.identity.service import get_farm_for_principal, get_principal
@@ -32,6 +33,14 @@ def _resolve_org_id(principal: Any, organization_id: uuid.UUID | None) -> uuid.U
         raise Forbidden("You do not belong to an active organization.")
     active.sort(key=lambda m: (m.created_at or datetime.now(UTC), m.organization_id))
     return active[0].organization_id
+
+
+def _require_analytics_access(db: Session, principal: Any, organization_id: uuid.UUID) -> None:
+    """Enforce tenant membership before the plan capability gate."""
+    principal.require_member_of(organization_id)
+    entitlements.require_flag(
+        db, organization_id, entitlements.KEY_ANALYTICS_ACCESS
+    )
 
 
 def _reject_unsupported(
@@ -77,6 +86,7 @@ def executive_dashboard(
     distribution, recommendations summary, adoption, data freshness)."""
     _reject_unsupported(field_id, crop, date_from, date_to)
     org_id = _resolve_org_id(principal, organization_id)
+    _require_analytics_access(db, principal, org_id)
     return analytics_service.executive_dashboard(
         db,
         principal,
@@ -96,6 +106,7 @@ def farm_performance(
 ) -> dict:
     """Per-farm analytics over a period with per-field comparison rows."""
     farm = get_farm_for_principal(db, principal, farm_id)  # tenant scoping
+    _require_analytics_access(db, principal, farm.organization_id)
     return analytics_service.farm_performance(
         db,
         principal,
@@ -120,6 +131,7 @@ def commercial_metrics(
     USER-SUPPLIED price (model_derived, assumptions echoed); cost per
     hectare / yield / profit are reported as `missing` — never fabricated."""
     farm = get_farm_for_principal(db, principal, farm_id)  # tenant scoping
+    _require_analytics_access(db, principal, farm.organization_id)
     return analytics_service.commercial_metrics(
         db,
         principal,
@@ -145,6 +157,7 @@ def benchmarks(
     Cross-organization anonymized aggregates are not implemented — the
     service reports them with provenance `missing`."""
     org_id = _resolve_org_id(principal, organization_id)
+    _require_analytics_access(db, principal, org_id)
     return analytics_service.benchmark(
         db,
         principal,
