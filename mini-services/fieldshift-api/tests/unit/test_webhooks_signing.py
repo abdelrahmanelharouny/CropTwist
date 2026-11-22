@@ -734,3 +734,53 @@ def test_developer_event_activity_written():
     activities = [o for o in session.objects if isinstance(o, ActivityEvent)]
     assert any(a.event_type == "developer.webhook_created" for a in activities)
     assert session.commits == 1
+
+
+def test_webhook_rejects_ipv4_mapped_private_ipv6_and_mixed_dns(monkeypatch):
+    monkeypatch.setattr(config.settings, "environment", "production")
+    with pytest.raises(ValidationFailed):
+        webhooks.validate_webhook_url("https://[::ffff:127.0.0.1]/hook")
+
+    monkeypatch.setattr(
+        webhooks.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [
+            (None, None, None, None, ("8.8.8.8", 443)),
+            (None, None, None, None, ("10.0.0.7", 443)),
+        ],
+    )
+    with pytest.raises(ValidationFailed, match="private or non-global"):
+        webhooks._resolve_pinned_address("mixed.example", 443, "https")
+
+
+def test_webhook_delivery_never_follows_redirects(monkeypatch):
+    calls = []
+
+    class Response:
+        status = 302
+
+    class FakeConnection:
+        def __init__(self, host, port, address, timeout):
+            calls.append(("connect", host, port, address))
+
+        def request(self, method, target, body, headers):
+            calls.append(("request", method, target, body))
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            calls.append(("close",))
+
+    monkeypatch.setattr(webhooks, "_resolve_pinned_address", lambda *args: "8.8.8.8")
+    monkeypatch.setattr(webhooks, "_PinnedHTTPSConnection", FakeConnection)
+
+    status = webhooks._post_pinned(
+        "https://receiver.example/hooks/crop?tenant=1",
+        b'{"event":"field.created"}',
+        {"Content-Type": "application/json"},
+        2.0,
+    )
+    assert status == 302
+    assert [call[0] for call in calls].count("request") == 1
+    assert ("request", "POST", "/hooks/crop?tenant=1", b'{"event":"field.created"}') in calls
