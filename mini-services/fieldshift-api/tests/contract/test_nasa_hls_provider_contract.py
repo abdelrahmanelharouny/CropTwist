@@ -101,6 +101,15 @@ def test_nasa_hls_extracts_only_numeric_http_status_from_gdal_error():
     ) is None
 
 
+
+
+def test_hls_reads_only_surfaces_required_by_requested_indices():
+    assert hls_provider_module._required_surfaces_for_indices(["ndvi"]) == ["red", "nir"]
+    assert hls_provider_module._required_surfaces_for_indices(["ndmi", "evi"]) == [
+        "red", "nir", "blue", "swir1"
+    ]
+
+
 def test_provider_satisfies_platform_contract():
     provider = NasaHlsProvider()
     assert isinstance(provider, EnvironmentalDataProvider)
