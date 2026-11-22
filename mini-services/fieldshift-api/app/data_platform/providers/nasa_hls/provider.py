@@ -256,7 +256,10 @@ class NasaHlsProvider:
                     else type(exc).__name__
                 )
                 status_code = detail.get("http_status")
+                failure_code = detail.get("failure_code")
                 warning = f"Scene {scene_id}: protected asset read failed ({safe_reason})"
+                if isinstance(failure_code, str) and re.fullmatch(r"[a-z0-9_]{1,64}", failure_code):
+                    warning += f" failure_code:{failure_code}"
                 if isinstance(status_code, int) and not isinstance(status_code, bool) and 100 <= status_code <= 599:
                     warning += f" http_status:{status_code}"
                 warnings.append(warning)
@@ -459,6 +462,33 @@ def _required_surfaces_for_indices(variables: list[str]) -> list[str]:
         for surface in ("red", "nir", "blue", "green", "swir1", "swir2")
         if surface in required
     ]
+
+
+
+
+def _safe_gdal_failure_code(exc: Exception) -> str:
+    """Map GDAL error text to a fixed, non-sensitive diagnostic code."""
+    status_code = _safe_http_status_from_exception(exc)
+    if status_code is not None:
+        return f"http_{status_code}"
+    message = str(exc).lower()
+    if "certificate" in message or "ssl" in message or "tls" in message:
+        return "tls_validation_error"
+    if "could not resolve host" in message or "name or service not known" in message:
+        return "dns_resolution_error"
+    if "timed out" in message or "timeout" in message:
+        return "network_timeout"
+    if "not recognized as a supported file format" in message:
+        return "unsupported_raster_format"
+    if "no such file" in message or "not found" in message:
+        return "asset_not_found"
+    if "access denied" in message or "forbidden" in message:
+        return "asset_access_denied"
+    if "unauthorized" in message:
+        return "earthdata_unauthorized"
+    if "curl error" in message:
+        return "curl_transport_error"
+    return "raster_read_failed"
 
 
 def hls_catalog_url() -> str | None:
@@ -751,7 +781,11 @@ def _scene_observations(
         cloud_mask = ((fmask_uint8 & FMASK_EXCLUDE_MASK) != 0) | high_aerosol_mask
     except Exception as exc:  # noqa: BLE001 — raster errors can contain signed asset URLs
         reason = type(exc).__name__
-        details = {"scene_id": scene_id, "reason": reason}
+        details: dict[str, Any] = {
+            "scene_id": scene_id,
+            "reason": reason,
+            "failure_code": _safe_gdal_failure_code(exc),
+        }
         http_status = _safe_http_status_from_exception(exc)
         if http_status is not None:
             details["http_status"] = http_status
