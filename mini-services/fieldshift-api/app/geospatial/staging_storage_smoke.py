@@ -1,11 +1,14 @@
-"""One-shot staging smoke test for the bounded PostgreSQL raster object store.
+"""One-shot staging smoke test for the configured raster object store.
 
 Runs from Railway's staging API pre-deploy command. It creates a temporary
-organization and one tiny object, verifies put/exists/read/stat/delete, then
-removes both the object and organization. It never touches user-owned rows.
+organization and a tiny valid PNG object, verifies put/exists/read/stat/delete,
+then removes both the object and organization. It never touches user-owned rows.
+The payload is valid for both the PostgreSQL BYTEA and S3-compatible adapters.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import uuid
 
 from app.core.database import SessionLocal
@@ -17,7 +20,9 @@ def main() -> None:
     organization_id: uuid.UUID | None = None
     key: str | None = None
     storage = get_raster_storage()
-    payload = b"croptwist-staging-postgres-objectstore-smoke-v1"
+    payload = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jNioAAAAASUVORK5CYII="
+    )
 
     try:
         with SessionLocal() as session:
@@ -31,23 +36,24 @@ def main() -> None:
 
         key = (
             f"org/{organization_id}/field/{uuid.uuid4()}/"
-            "source/staging-smoke/object.bin"
+            "source/staging-smoke/object.png"
         )
         stored = storage.put_bytes(
             key,
             payload,
-            content_type="application/octet-stream",
+            content_type="image/png",
         )
-        assert stored.backend == "postgres", stored.backend
+        assert stored.backend in {"postgres", "s3"}, stored.backend
         assert storage.exists(key), "object should exist after put"
         assert storage.read_bytes(key) == payload, "read-after-write mismatch"
         stat = storage.stat(key)
         assert stat.byte_size == len(payload), stat.byte_size
-        assert stat.checksum_sha256 is not None, "checksum missing"
+        if stat.checksum_sha256 is not None:
+            assert stat.checksum_sha256 == hashlib.sha256(payload).hexdigest()
 
         storage.delete(key)
         assert not storage.exists(key), "object should be absent after delete"
-        print("POSTGRES_RASTER_OBJECTSTORE_SMOKE=PASS")
+        print(f"RASTER_OBJECTSTORE_SMOKE=PASS backend={stored.backend}")
     finally:
         if key:
             try:
