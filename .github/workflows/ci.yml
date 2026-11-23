@@ -76,6 +76,10 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r requirements.txt
 
+      - name: Compile optional Presto parity harness
+        working-directory: .
+        run: python -m py_compile mini-services/fieldshift-api/scripts/verify_presto_numerical_parity.py
+
       - name: Apply migrations to head
         run: alembic upgrade head
 

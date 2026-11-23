@@ -1,7 +1,7 @@
 # M1 Acceptance Matrix — Data & AI Integration
 
 Last audited: 2026-11-23 UTC  
-Repository base at audit start: `main@d519c381e923f73df15acdb99872fdfc9a701a04`  
+Repository base at audit start: `main@4dd44dae19b54c68eb7963976701f3822545dfd5`  
 Live validation branch: `test/m1-safe-live-validation`
 
 ## Decision
@@ -19,7 +19,14 @@ Live validation branch: `test/m1-safe-live-validation`
 | Presto | Input contract, lazy encoder, 128-D embedding path, classifier training harness | No independent numerical parity result against upstream implementation; no approved labeled training dataset selected/tracked | Scientific acceptance pending |
 | E5 multilingual retrieval | Local E5 adapter and evaluator | No reviewed Arabic/English relevance-labelled corpus and no accepted Recall@5/@10, MRR, or nDCG report; semantic retrieval remains disabled | Quality acceptance pending |
 
-The latest successful credential-enabled live run **45095264042** confirmed OpenRouter and Groq as `live_verified` fallbacks, NASA HLS raster-window success (one observation from `HLS.S30.T36RTR.2025002T083341.v2.0`), protected Sentinel-2 success (one observation, zero warnings), and WaPOR COG-window success (1,681 valid pixels; zero NoData). No farmer/field data was sent to hosted LLMs. A previous CI run caught and fixed a provider-diagnostics test syntax issue. Per the current execution decision, no further test suites are being run during implementation; exact-head CI and consolidated live verification are deferred until the remaining phases and redesign are complete.
+The latest successful credential-enabled live run **45095264042** confirmed OpenRouter and Groq as `live_verified` fallbacks, NASA HLS raster-window success (one observation from `HLS.S30.T36RTR.2025002T083341.v2.0`), protected Sentinel-2 success (one observation, zero warnings), and WaPOR COG-window success (1,681 valid pixels; zero NoData). No farmer/field data was sent to hosted LLMs. A previous CI run caught and fixed a provider-diagnostics test syntax issue. During this closure pass, exact-head CI and the M2 clean-room workflow are being run as release-safety checks; these software suites do not replace the scientific parity, ingestion, licensing, or model-evaluation evidence listed above.
+
+## Scientific closure work added on 2026-11-23
+
+- Added `scripts/verify_presto_numerical_parity.py`, which compares the CropTwist/TorchGeo embedding against the original NASA Harvest `Presto.load_pretrained().encoder(eval_task=True)` using identical validated records and emits per-record max/mean absolute error and cosine similarity. **Harness added; it has not been executed.**
+- Added `docs/data/PRESTO_MONTHLY_INGESTION_SPEC.md`, pinning the upstream 17-channel order, raw units, normalization constants, monthly aggregation/QA/provenance contract and explicit missing providers. **Specification only; live S1/S2/ERA5/SRTM ingestion remains open.**
+- Added `docs/data/EGYPTIAN_DATA_SOURCE_LICENSE_AUDIT_2026-11-23.md`. FAO's Egypt map identifies Zankalon, Side Ghazi and Mallawi and 2023–2024 field-grounded labels, but its public landing page does not grant an explicit dataset license. **Do not mark labels license-verified until item-level terms and legend are captured.**
+- Added `docs/ai/E5_BILINGUAL_CORPUS_ANNOTATION_PROTOCOL.md`. The evaluator is ready for judged data; the 300-query/500-passage corpus and human judgments have not been supplied or reviewed.
 
 ## Required to close M1
 
