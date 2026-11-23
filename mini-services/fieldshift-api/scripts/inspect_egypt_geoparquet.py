@@ -34,7 +34,7 @@ def _counts(values: list[Any], limit: int = 100) -> dict[str, Any]:
     }
 
 
-def _profile_geoparquet(data: bytes, collection_id: str, member_name: str) -> dict[str, Any]:
+def _profile_geoparquet(data: bytes, collection_id: str, member_name: str) -> tuple[dict[str, Any], list[Any]]:
     table = pq.read_table(io.BytesIO(data))
     schema_metadata = table.schema.metadata or {}
     raw_geo = schema_metadata.get(b"geo")
@@ -92,7 +92,7 @@ def _profile_geoparquet(data: bytes, collection_id: str, member_name: str) -> di
         if "quality_score" in name.lower()
     ]
 
-    return {
+    profile = {
         "collection_id": collection_id,
         "member": member_name,
         "row_count": table.num_rows,
@@ -116,6 +116,7 @@ def _profile_geoparquet(data: bytes, collection_id: str, member_name: str) -> di
             for name, vals in attributes.items()
         },
     }
+    return profile, geometries
 
 
 def inspect_archives(archives_dir: Path) -> dict[str, Any]:
@@ -123,8 +124,10 @@ def inspect_archives(archives_dir: Path) -> dict[str, Any]:
         "status": "running",
         "scope": "Nested Egypt collection GeoParquet files only; profile is not training approval.",
         "collections": [],
+        "cross_collection_spatial_overlap": [],
         "errors": [],
     }
+    geometries_by_collection: dict[str, list[Any]] = {}
     for archive_path in sorted(archives_dir.glob("WorldCereal_ReferenceData_*_Africa_*.zip")):
         try:
             with zipfile.ZipFile(archive_path) as outer:
@@ -138,18 +141,41 @@ def inspect_archives(archives_dir: Path) -> dict[str, Any]:
                             if not info.is_dir() and info.filename.lower().endswith(".geoparquet")
                         ]
                         for info in geoparquet_members:
-                            report["collections"].append(
-                                _profile_geoparquet(
-                                    collection.read(info),
-                                    nested_name.removesuffix(".zip"),
-                                    f"{archive_path.name}!/{nested_name}!/{info.filename}",
-                                )
+                            profile, geometries = _profile_geoparquet(
+                                collection.read(info),
+                                nested_name.removesuffix(".zip"),
+                                f"{archive_path.name}!/{nested_name}!/{info.filename}",
                             )
+                            report["collections"].append(profile)
+                            geometries_by_collection[profile["collection_id"]] = geometries
         except Exception as exc:
             report["errors"].append({
                 "archive": archive_path.name,
                 "error": f"{type(exc).__name__}: {exc}",
             })
+    collection_ids = sorted(geometries_by_collection)
+    if len(collection_ids) >= 2:
+        first_id, second_id = collection_ids[:2]
+        first_geometries = geometries_by_collection[first_id]
+        second_geometries = geometries_by_collection[second_id]
+        second_tree = shapely.STRtree(second_geometries)
+        pairs = second_tree.query(first_geometries, predicate="intersects")
+        positive_area = 0
+        exact_equal = 0
+        for first_index, second_index in zip(pairs[0].tolist(), pairs[1].tolist()):
+            intersection = shapely.intersection(first_geometries[first_index], second_geometries[second_index])
+            if not shapely.is_empty(intersection) and float(shapely.area(intersection)) > 0:
+                positive_area += 1
+            if bool(shapely.equals(first_geometries[first_index], second_geometries[second_index])):
+                exact_equal += 1
+        report["cross_collection_spatial_overlap"].append({
+            "collection_a": first_id,
+            "collection_b": second_id,
+            "intersecting_polygon_pairs": int(len(pairs[0])),
+            "positive_area_intersection_pairs": positive_area,
+            "exact_equal_geometry_pairs": exact_equal,
+            "note": "Intersection counts are used for leakage review; area is not interpreted in degrees squared.",
+        })
     report["status"] = "completed" if report["collections"] and not report["errors"] else "partial_failure"
     return report
 
