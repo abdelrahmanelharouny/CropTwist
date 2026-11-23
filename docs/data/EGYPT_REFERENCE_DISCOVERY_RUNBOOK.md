@@ -52,6 +52,15 @@ References:
 
 ## First live run (2026-11-23)
 
-Workflow: [Egypt reference data discovery run #1](https://github.com/abdelrahmanelharouny/CropTwist/actions/runs/45157390222). The public RDM API returned zero public collections and zero Egypt/locality matches. All eight Africa archives for 2018–2025 were downloaded successfully, size/checksum validated, and scanned; 63 archive members were enumerated and no Egypt/locality text matches were found. The report and downloaded archive bundle are retained in artifact ID `14808543228` until 2026-12-23.
+Workflow: [Egypt reference data discovery run #1](https://github.com/abdelrahmanelharouny/CropTwist/actions/runs/45157390222). The public RDM API returned zero public collections and zero Egypt/locality matches. All eight Africa archives for 2018–2025 were downloaded successfully, size/checksum validated, and scanned; 63 archive members were enumerated and the initial top-level metadata scan found no Egypt/locality text matches. A manual nested-ZIP review subsequently found two Egypt collections in the 2019 archive: 2019_egy_faowapor1_poly_111 (900 observations) and 2019_egy_faowapor2_poly_111 (634 observations), both from FAO WAPOR field data Egypt 2019 and declaring CC_BY in their metadata. The report and downloaded archive bundle are retained in artifact ID `14808543228` until 2026-12-23.
 
 This is a bounded negative discovery result, not proof that no Egyptian features are embedded in any geometry or unindexed field. Review actual data attributes and spatial coverage before closing the source. No WorldCereal Egypt collection is approved for training from this run.
+
+
+## Nested-archive finding and scanner correction
+
+The first scan enumerated outer archive members but did not inspect the ZIP files nested inside Africa archives. Manual review of the 2019 Africa archive found:
+- 2019_egy_faowapor1_poly_111 — 900 field-registered polygon observations, date 2019-08-05, declared CC_BY.
+- 2019_egy_faowapor2_poly_111 — 634 field-registered polygon observations, dates 2019-03-14 to 2019-03-28, declared CC_BY.
+
+The scanner is being updated to inspect nested collection ZIP names and their metadata workbooks. Treat the above as a manual discovery from the retained archive bundle until the corrected workflow artifact confirms the automated report. Both collections are research candidates, not yet training-approved: verify rights, parse GeoParquet attributes/geometries, check duplicate/overlapping fields, and construct spatial-temporal grouped splits.
