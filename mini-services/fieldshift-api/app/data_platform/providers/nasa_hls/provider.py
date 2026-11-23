@@ -639,6 +639,13 @@ def _gdal_env_options(auth: dict[str, str]) -> dict[str, str]:
         "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
         "VSI_CACHE": "TRUE",
         "GDAL_HTTP_TIMEOUT": str(int(settings.nasa_hls_timeout_seconds)),
+        # LP DAAC protected COG endpoints can redirect authenticated GETs to
+        # object storage while their HEAD response follows a different auth
+        # path. Force GDAL's initial byte-range GET instead of HEAD; retry
+        # transient range failures without downloading whole scenes.
+        "CPL_VSIL_CURL_USE_HEAD": "NO",
+        "GDAL_HTTP_MAX_RETRY": "3",
+        "GDAL_HTTP_RETRY_DELAY": "1",
     }
     token = auth.get("bearer_token")
     if token:
