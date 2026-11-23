@@ -64,3 +64,16 @@ The first scan enumerated outer archive members but did not inspect the ZIP file
 - 2019_egy_faowapor2_poly_111 — 634 field-registered polygon observations, dates 2019-03-14 to 2019-03-28, declared CC_BY.
 
 The scanner has been updated to inspect nested collection ZIP names and their metadata workbooks. The next workflow artifact will confirm the automated report and add a GeoParquet profile for the two collections. Both collections are research candidates, not yet training-approved: verify rights, parse GeoParquet attributes/geometries, check duplicate/overlapping fields, and construct spatial-temporal grouped splits.
+
+
+## GeoParquet QA profile (workflow run 45158997515)
+
+The corrected workflow successfully parsed both nested Egypt GeoParquet files:
+- 1,532 actual rows total: 898 in collection 1 and 634 in collection 2. The first metadata workbook says 900 for collection 1, so preserve and investigate the 2-row discrepancy.
+- All 1,532 geometries parsed and passed Shapely validity checks; no empty geometries.
+- 12 polygon pairs intersect across the two collections with positive-area overlap; no exact-equal geometry pairs. Keep intersecting records in the same spatial split group or review them for deduplication.
+- 878 rows have crop-specific EWOC codes after excluding generic codes 1000000000, 1100000000, 6000000000 and 7000000000. The remaining rows are generic/land-cover categories and must not be silently assigned a crop.
+- Collection 1 has 598 null CroType values and is dominated by rice (206) and maize (57) among crop-specific labels. Collection 2 has 20 missing Field_ID / Block_ID values and is dominated by wheat (270) and permanent leguminous crops (144); many remaining crop classes are very small.
+- quality_score_ct and quality_score_lc are constant 93; they are source curation scores, not per-row probabilities or measured model accuracy.
+
+The full machine profile and downloaded source archives are retained in artifact 14808784478. This QA is not model training or independent validation. Preserve original fields and missingness, map only explicit crop-specific EWOC codes, and split by spatial groups/intersections rather than random rows.
