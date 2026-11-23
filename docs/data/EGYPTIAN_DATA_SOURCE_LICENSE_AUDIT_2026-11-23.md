@@ -110,3 +110,19 @@ FAO's general website terms state that most website content can be reused for pr
 **Training fallback:** if the 2026 RDM Africa metadata scan finds no Egypt collection, use WorldCereal 2021 map pixels only in an explicitly separated weak-supervision experiment (never as ground truth), use official governorate crop statistics only for aggregate plausibility checks, and keep the crop classifier out of production until independent Egyptian field/parcel labels are licensed and reviewed. Presto representation learning and the crop-label classifier remain separate deliverables.
 
 Sources: https://zenodo.org/records/18769612 ; https://www.fao.org/contact-us/terms/ ; https://www.fao.org/contact-us/terms/db-terms-of-use/en ; https://worldcereal.github.io/worldcereal-documentation/rdm/explore.html
+
+
+## Live WorldCereal discovery result — 2026-11-23
+
+A credential-free GitHub Actions run queried the public RDM catalog and downloaded/scanned all eight Africa archives exposed by Zenodo record 18769612 (years 2018–2025). The run completed with no API/download/checksum/scan errors:
+
+- Public RDM collections returned: **0**
+- Egypt/locality matches in RDM metadata: **0**
+- Africa archives downloaded and checksum-verified: **8 / 8**
+- Archive members scanned: **63**
+- Egypt/locality text matches in archive metadata/text: **0**
+- No Egypt reference collection was identified in this discovery pass.
+
+Evidence: GitHub Actions run [45157390222](https://github.com/abdelrahmanelharouny/CropTwist/actions/runs/45157390222), artifact `egypt-reference-discovery-report` (artifact ID `14808543228`, SHA-256 `1499b92618629d2dfe1ec1c13981746a05e355dad68dd9809de3e6323828b392`).
+
+**Interpretation limit:** this is a negative metadata/text search, not proof that no Egypt geometry or observations exist anywhere in WorldCereal. It does not inspect every vector attribute semantically or every possible place-name spelling. Do not treat the result as ground-truth availability. Keep the FAO Egypt 2023–2024 map as the primary Egyptian research candidate pending exact item-level terms and data retrieval; pursue Egyptian ministry/university/field survey sources in parallel.
