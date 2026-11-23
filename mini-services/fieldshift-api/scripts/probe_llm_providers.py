@@ -1,7 +1,7 @@
 """Run explicit live LLM connectivity probes without sending user data.
 
 Usage (from mini-services/fieldshift-api):
-    python scripts/probe_llm_providers.py --provider gemini --provider groq
+    python scripts/probe_llm_providers.py --provider openrouter --provider groq
 """
 from __future__ import annotations
 
@@ -31,11 +31,11 @@ def main() -> int:
         "--provider",
         action="append",
         dest="providers",
-        choices=("gemini", "groq", "openrouter", "legacy-llm-bridge"),
+        choices=("openrouter", "groq", "legacy-llm-bridge"),
         help="Provider to probe. Repeat to probe more than one; default probes configured modern providers.",
     )
     args = parser.parse_args()
-    names = args.providers or ["gemini", "groq", "openrouter"]
+    names = args.providers or ["openrouter", "groq"]
     results = asyncio.run(_run(names))
     print(json.dumps(results, indent=2, sort_keys=True))
     if any(item["status"] not in ("live_verified", "not_configured") for item in results):
