@@ -7,8 +7,9 @@ the report). This is an evidence-producing command, not an automatic approval.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import math
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,25 @@ from app.intelligence.crop_history.contracts import CropHistoryRecord
 from app.intelligence.crop_history.presto import encode_records, load_pretrained
 from app.intelligence.crop_history.presto_inputs import build_presto_input
 
+
+
+def _upstream_revision(repo: Path) -> str | None:
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(repo.resolve()), "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 def _load_records(path: Path, limit: int) -> list[CropHistoryRecord]:
     records: list[CropHistoryRecord] = []
@@ -119,8 +139,14 @@ def main() -> int:
             "cosine_similarity": cosine,
             "allclose": passed,
         })
+    upstream_repo = args.upstream_repo.resolve()
+    checkpoint = upstream_repo / "data" / "default_model.pt"
+    if not checkpoint.is_file():
+        raise SystemExit("upstream Presto checkpoint data/default_model.pt is missing")
     report = {
         "status": "passed" if all(row["allclose"] for row in rows) else "failed",
+        "upstream_git_revision": _upstream_revision(upstream_repo),
+        "upstream_checkpoint_sha256": _sha256(checkpoint),
         "reference": "NASA Harvest original Presto package: Presto.load_pretrained().encoder(eval_task=True)",
         "candidate": "TorchGeo Presto_Weights.PRESTO + CropTwist custom valid-token pooling",
         "input_schema": "presto-17ch-12m-v1",
