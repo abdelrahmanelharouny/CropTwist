@@ -1,6 +1,6 @@
 # M1 Safe Live Validation Runbook
 
-Status: executed against public providers and credential-enabled protected probes on 2026-11-23 UTC; **M1 remains open**. Latest completed run 45083517154 (commit `312db77d`) verified NASA/CDSE public metadata and a real WaPOR COG window (1,681 valid pixels; 0 NoData), detected configured credentials, but did not pass protected gates: NASA returned 0/1 scenes processed with one warning, CDSE returned sanitized `ProviderUnavailable`, and Gemini returned sanitized `provider_transient_http` with HTTP 503 after 21,049 ms. The fixed Gemini probe deadline is now 60s to cover the configured 25s request timeout, one retry and bounded backoff. The current code also emits only allowlisted NASA/CDSE failure reason codes. A fresh smoke run on the updated head is in progress. See the sanitized artifact attached to run 45083517154; credential detection is not provider acceptance.
+Status: executed against public providers and credential-enabled protected probes on 2026-11-23 UTC; **M1 remains open**. Latest completed artifact `45105049079` verified protected NASA HLS and CDSE Sentinel-2 raster-window reads (one observation each, zero warnings), WaPOR (1,681 valid pixels; zero NoData), and OpenRouter/Groq fallback connectivity. That artifact predates Gemini-primary probing and does not establish Gemini availability. The revised branch smoke now probes Gemini as primary and requires a live Gemini result plus at least one live fallback. Presto numerical parity/training evidence and the reviewed bilingual E5 relevance benchmark remain separate scientific gates. See the sanitized artifact attached to run 45083517154; credential detection is not provider acceptance.
 Target: validate provider connectivity and bounded data reads without changing production state.
 
 ## Safety rules
@@ -26,7 +26,7 @@ Target: validate provider connectivity and bounded data reads without changing p
 
 Do not use the Copernicus account password in place of the S3 key pair. WaPOR v3 catalogue and public COG access do not require a user API key.
 
-For the GitHub Actions protected-probe job, add these as **repository Actions secrets** (Settings → Secrets and variables → Actions), never as plain variables: `CROPTWIST_GROQ_API_KEY`, `CROPTWIST_OPENROUTER_API_KEY`, `CROPTWIST_EARTHDATA_BEARER_TOKEN`, `CROPTWIST_CDSE_S3_ACCESS_KEY`, and `CROPTWIST_CDSE_S3_SECRET_KEY`. The smoke probes the two fallback providers with fixed non-sensitive prompts and records sanitized results. Probe Gemini separately as the configured primary; do not report primary-provider acceptance based only on fallback success.
+For the GitHub Actions protected-probe job, add these as **repository Actions secrets** (Settings → Secrets and variables → Actions), never as plain variables: `CROPTWIST_GROQ_API_KEY`, `CROPTWIST_OPENROUTER_API_KEY`, `CROPTWIST_EARTHDATA_BEARER_TOKEN`, `CROPTWIST_CDSE_S3_ACCESS_KEY`, and `CROPTWIST_CDSE_S3_SECRET_KEY`. The smoke probes the configured Gemini primary and both ordered fallbacks with fixed non-sensitive prompts and records sanitized results. Primary acceptance requires Gemini `live_verified`; fallback acceptance requires at least one of Groq/OpenRouter `live_verified`. Do not report primary-provider acceptance based only on fallback success.
 
 ## Phase 0 — local safety and offline regression
 
@@ -102,7 +102,7 @@ A successful catalogue response is not a successful raster-read test. The public
 
 ## Phase 3 — Gemini primary and fallback LLM connectivity (fixed prompt only)
 
-The public smoke workflow calls sanitized `probe_provider("openrouter")` and `probe_provider("groq")` adapters when their API keys are present. These are fallback connectivity checks. Gemini is the configured primary and must be probed independently with `probe_provider("gemini")`; a failed or missing Gemini probe must remain visible as a primary-provider blocker. Missing keys are reported as blocked, never passed.
+The public smoke workflow calls sanitized `probe_provider("gemini")`, `probe_provider("groq")` and `probe_provider("openrouter")` adapters when their API keys are present. Gemini is the configured primary; Groq and OpenRouter are ordered fallbacks. A failed or missing Gemini probe remains a primary-provider blocker. Missing keys are reported as blocked, never passed.
 
 From mini-services/fieldshift-api, with the key loaded locally:
 
