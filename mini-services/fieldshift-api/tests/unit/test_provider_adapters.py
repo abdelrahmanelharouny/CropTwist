@@ -204,12 +204,11 @@ def test_failover_never_splices_after_provider_stream_emits_text():
 
 def test_provider_status_reports_unverified_configuration_without_secrets():
     statuses = get_provider_statuses()
-    assert [row["name"] for row in statuses[:4]] == ["ollama", "gemini", "groq", "openrouter"]
-    assert statuses[0]["model"] == "qwen3:4b-instruct-2507-q4_K_M"
-    assert statuses[0]["status"] == "missing_credentials_or_disabled"
-    assert statuses[1]["model"] == "gemini-3.8-flash"
-    assert statuses[2]["model"] == "openai/gpt-oss-120b"
-    assert statuses[3]["model"] == "nvidia/nemotron-3.5-super-vl:free"
+    # Only the explicitly approved hosted chain is registered by default.
+    # Local Ollama and Gemini are intentionally deferred and must not appear.
+    assert [row["name"] for row in statuses] == ["openrouter", "groq"]
+    assert statuses[0]["model"] == "nvidia/nemotron-3.5-super-vl:free"
+    assert statuses[1]["model"] == "openai/gpt-oss-120b"
     serialized = json.dumps(statuses)
     assert "unit-test-key" not in serialized
     assert "api_key" not in serialized
