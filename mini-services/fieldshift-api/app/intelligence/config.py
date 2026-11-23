@@ -37,8 +37,8 @@ class AISettings(BaseSettings):
     ai_conversation_retention_days: int = Field(default=365, ge=0, le=3650)
     supported_locales: tuple[str, ...] = ("en", "ar")
 
-    # Exact requested defaults. Keys are SecretStr and are never returned by
-    # health/status endpoints or included in logs.
+    # Deprecated dormant Gemini settings retained only for backward-compatible
+    # environment parsing. Gemini is not registered and cannot enter the chain.
     gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.8-flash"
     groq_api_key: SecretStr = SecretStr("")
