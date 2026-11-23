@@ -182,7 +182,7 @@ def _download_file(client: httpx.Client, file_info: dict[str, Any], output_dir: 
 
 def discover(*, download_archives: bool, output_dir: Path, max_archive_mb: int) -> dict[str, Any]:
     report: dict[str, Any] = {
-        "status": "completed_with_findings",
+        "status": "running",
         "rdm": {"url": RDM_COLLECTIONS_URL, "matches": [], "error": None},
         "zenodo": {"record_url": ZENODO_RECORD_URL, "africa_archives": [], "scans": [], "error": None},
         "decision": "Discovery only. No dataset is approved for training by this script.",
@@ -223,6 +223,7 @@ def discover(*, download_archives: bool, output_dir: Path, max_archive_mb: int) 
                         })
         except Exception as exc:  # noqa: BLE001
             report["zenodo"]["error"] = f"{type(exc).__name__}: {exc}"
+    report["status"] = "completed" if report["rdm"]["error"] is None and report["zenodo"]["error"] is None else "partial_failure"
     return report
 
 
@@ -254,7 +255,7 @@ def main() -> int:
         "output": str(args.output),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0 if report["rdm"]["error"] is None or report["zenodo"]["error"] is None else 2
+    return 0 if report["status"] == "completed" else (0 if report["rdm"]["error"] is None or report["zenodo"]["error"] is None else 2)
 
 
 if __name__ == "__main__":
