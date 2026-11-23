@@ -1,7 +1,9 @@
 """Provider-neutral contracts and registry for CropTwist AI.
 
-The legacy bridge remains available as an explicit compatibility adapter,
-Ollama is an opt-in loopback provider for private context; hosted providers remain subject to explicit data-egress approval.
+The active release registry is frozen to OpenRouter followed by Groq. Gemini
+and Ollama adapters are intentionally not registered; the legacy bridge is
+not part of the active chain. Hosted-provider data egress remains disabled
+unless the explicit privacy gates are enabled.
 """
 from __future__ import annotations
 
