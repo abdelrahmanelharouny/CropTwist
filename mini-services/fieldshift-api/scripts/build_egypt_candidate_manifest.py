@@ -175,6 +175,7 @@ def build_manifest(archives_dir: Path) -> dict[str, Any]:
         if row["crop_specific"]:
             group_class_counts[row["spatial_group_id"]][row["ewoc_code"]] += 1
 
+    crop_bearing_group_count = len(group_class_counts)
     return {
         "status": "candidate_only",
         "source": "WorldCereal 2019 Africa archive; nested FAO-WaPOR Egypt field collections",
@@ -183,6 +184,8 @@ def build_manifest(archives_dir: Path) -> dict[str, Any]:
         "generic_or_non_crop_rows": sum(row["label_status"] == "excluded_generic" for row in rows),
         "unmapped_ewoc_rows": unmapped_rows,
         "spatial_group_count": len(components),
+        "crop_bearing_spatial_group_count": crop_bearing_group_count,
+        "generic_only_spatial_group_count": len(components) - crop_bearing_group_count,
         "positive_area_intersection_pairs": spatial_pairs,
         "crop_class_counts": dict(sorted(class_counts.items())),
         "group_class_counts": {
@@ -216,6 +219,8 @@ def main() -> int:
         "generic_or_non_crop_rows": report["generic_or_non_crop_rows"],
         "unmapped_ewoc_rows": report["unmapped_ewoc_rows"],
         "spatial_group_count": report["spatial_group_count"],
+        "crop_bearing_spatial_group_count": report["crop_bearing_spatial_group_count"],
+        "generic_only_spatial_group_count": report["generic_only_spatial_group_count"],
         "positive_area_intersection_pairs": report["positive_area_intersection_pairs"],
         "training_ready": report["training_ready"],
         "output": str(args.output),
