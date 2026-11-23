@@ -13,10 +13,8 @@ import hashlib
 import importlib
 from importlib import metadata
 import json
-import math
 import subprocess
 import sys
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -109,7 +107,7 @@ def main() -> int:
             raise RuntimeError(f"record {index} returned unexpected shapes {reference.shape} and {candidate.shape}")
         delta = np.abs(reference - candidate)
         denominator = float(np.linalg.norm(reference) * np.linalg.norm(candidate))
-        cosine = float(np.dot(reference, candidate) / denominator) if denominator > 0 else float("nan")
+        cosine = float(np.dot(reference, candidate) / denominator) if denominator > 0 else (1.0 if np.allclose(reference, candidate, atol=args.atol, rtol=args.rtol) else 0.0)
         passed = bool(np.allclose(reference, candidate, atol=args.atol, rtol=args.rtol))
         all_passed = all_passed and passed
         comparisons.append({
