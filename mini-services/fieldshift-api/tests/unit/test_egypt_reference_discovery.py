@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from scripts.discover_egypt_reference_data import _matching_records, _scan_xlsx_bytes
+from scripts.discover_egypt_reference_data import _matching_records, _scan_archive, _scan_xlsx_bytes
 
 
 def test_rdm_discovery_matches_locality_and_preserves_license_metadata() -> None:
@@ -72,3 +72,47 @@ def test_worldcereal_xlsx_metadata_scan_finds_egypt_and_license_row() -> None:
     assert matches[0]["row"] == "2"
     assert "egypt" in matches[0]["matched_terms"]
     assert any("CC BY 4.0" in cell for cell in matches[0]["cells"])
+
+
+
+def test_nested_worldcereal_collection_zip_detects_egypt_and_license(tmp_path) -> None:
+    workbook = BytesIO()
+    with ZipFile(workbook, "w", ZIP_DEFLATED) as book:
+        book.writestr(
+            "xl/sharedStrings.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+            <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <si><t>Dataset Title</t></si>
+              <si><t>License Type</t></si>
+              <si><t>FAO WAPOR, Egypt, 2019</t></si>
+              <si><t>CC_BY</t></si>
+            </sst>""",
+        )
+        book.writestr(
+            "xl/worksheets/sheet1.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <sheetData><row r="1">
+                <c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c>
+              </row><row r="2">
+                <c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c>
+              </row></sheetData>
+            </worksheet>""",
+        )
+
+    nested = BytesIO()
+    with ZipFile(nested, "w", ZIP_DEFLATED) as collection:
+        collection.writestr("metadata.xlsx", workbook.getvalue())
+        collection.writestr("field_data.geoparquet", b"PAR1testPAR1")
+
+    outer_path = tmp_path / "2019_Africa.zip"
+    with ZipFile(outer_path, "w", ZIP_DEFLATED) as outer:
+        outer.writestr("2019_egy_faowapor1_poly_111.zip", nested.getvalue())
+
+    report = _scan_archive(outer_path)
+    hits = report["matches"]
+
+    assert any("_egy_" in hit["matched_terms"] for hit in hits)
+    metadata_hit = next(hit for hit in hits if hit.get("source_file", "").endswith("metadata.xlsx"))
+    assert "egypt" in metadata_hit["matched_terms"]
+    assert any("CC_BY" in cell for cell in metadata_hit["cells"])
