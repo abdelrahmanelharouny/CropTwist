@@ -45,6 +45,7 @@ def test_probe_reports_not_configured_without_network(monkeypatch):
     monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Disabled())
     assert asyncio.run(provider_diagnostics.probe_provider("disabled"))["status"] == "not_configured"
 
+
 def test_probe_never_exposes_provider_exception_body(monkeypatch):
     class Broken:
         name = "broken"
@@ -102,8 +103,7 @@ def test_probe_timeout_is_reported_without_raw_exception_details(monkeypatch):
     monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Slow())
     result = asyncio.run(provider_diagnostics.probe_provider("slow"))
     assert result["status"] == "failed"
-    assert result["error_category"] == "provider_probe_failed"
-
+    assert result["error_category"] == "provider_timeout"
 
 
 def test_probe_does_not_verify_an_unexpected_nonempty_response(monkeypatch):
@@ -124,6 +124,7 @@ def test_probe_does_not_verify_an_unexpected_nonempty_response(monkeypatch):
     assert "content" not in result
     assert "I cannot follow" not in str(result)
 
+
 def test_probe_does_not_echo_untrusted_exception_category(monkeypatch):
     class SecretCategoryError(RuntimeError):
         category = "secret_token_value_123"
@@ -140,6 +141,7 @@ def test_probe_does_not_echo_untrusted_exception_category(monkeypatch):
     result = asyncio.run(provider_diagnostics.probe_provider("broken"))
     assert result["error_category"] == "provider_probe_failed"
     assert "secret_token_value_123" not in str(result)
+
 
 def test_probe_handles_non_string_exception_category(monkeypatch):
     class MalformedCategoryError(RuntimeError):
