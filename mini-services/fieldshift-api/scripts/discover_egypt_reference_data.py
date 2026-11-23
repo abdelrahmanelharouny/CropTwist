@@ -55,7 +55,16 @@ def _matching_records(payload: Any) -> list[dict[str, Any]]:
         # Prefer objects that actually identify a collection or resource.
         if not any(key in item for key in ("id", "collection", "collection_id")):
             continue
-        fingerprint = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        # APIs may expose the same collection both as a feature and as a
+        # nested record. De-duplicate by stable collection identity first,
+        # then by canonical payload for records without an identifier.
+        identity = item.get("id") or item.get("collection_id")
+        if identity is None:
+            collection = item.get("collection")
+            identity = collection if isinstance(collection, (str, int)) else None
+        fingerprint = str(identity) if identity is not None else hashlib.sha256(
+            serialized.encode("utf-8")
+        ).hexdigest()
         if fingerprint in seen:
             continue
         seen.add(fingerprint)
