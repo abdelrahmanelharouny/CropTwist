@@ -187,10 +187,13 @@ def main() -> int:
                     key=lambda scene: scene.cloud_cover_pct if scene.cloud_cover_pct is not None else 101.0,
                 )
                 scene_record = _record_to_scene_record(best_scene)
-                evidence["nasa_hls"]["asset_http_probe"] = _probe_nasa_asset_http(
-                    best_scene.asset_refs.get("red") or best_scene.asset_refs.get("nir"),
-                    settings.earthdata_bearer_token,
-                )
+                evidence["nasa_hls"]["asset_http_probes"] = {
+                    surface: _probe_nasa_asset_http(
+                        best_scene.asset_refs.get(surface),
+                        settings.earthdata_bearer_token,
+                    )
+                    for surface in ("red", "nir", "fmask")
+                }
                 acquired = best_scene.acquired_at
                 result = NasaHlsProvider().fetch_observations(
                     area_of_interest=AreaOfInterest(geometry_geojson=AOI),
