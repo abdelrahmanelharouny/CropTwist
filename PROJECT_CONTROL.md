@@ -24,7 +24,8 @@ These are isolated work packages. A branch is not considered complete until impl
 
 | Workstream | Branch | Scope |
 |---|---|---|
-| M1 scientific closure | `work/m1-scientific-closure-2026-11-23` | Presto upstream parity harness, monthly source contract, Egyptian data/license audit, reviewed E5 corpus protocol |\n| M2 | `work/m2-clean-room-release-current-main` | Clean-room build, migration repeatability, full suites, browser journeys (refreshed from current main) |
+| M1 scientific closure | `work/m1-scientific-closure-2026-11-23` | Presto upstream parity harness, monthly source contract, Egyptian data/license audit, reviewed E5 corpus protocol |
+| M2 | `work/m2-clean-room-release-current-main` | Clean-room build, migration repeatability, full suites, browser journeys (refreshed from current main) |
 | M3 | `work/m3-gis-satellite-reliability` | HLS/Sentinel processing, CRS, masks, raster windows, job reliability |
 | M4 | `work/m4-knowledge-evidence` | Versioned knowledge, E5/RAG evaluation, Arabic/English evidence |
 | M5–M7 | `work/m5-m7-agricultural-intelligence` | Optimizer, water/soil science, scenarios, sensitivity, digital twin |
