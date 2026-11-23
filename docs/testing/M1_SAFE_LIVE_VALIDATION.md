@@ -9,7 +9,7 @@ Target: validate provider connectivity and bounded data reads without changing p
 - Never place credentials in source files, command-line arguments, notebooks, issue comments, CI logs, or chat.
 - Load secrets from a local secret manager or an untracked .env file. Confirm .env is ignored by Git before running.
 - Do not add credentials to Railway Production as part of this runbook. Do not deploy, enqueue production ingestion jobs, or write to production databases.
-- Keep field/farmer data out of every hosted LLM probe. The primary configured provider is Gemini; Groq and OpenRouter are fallback providers. Every probe sends only a fixed, non-sensitive test prompt.
+- Keep field/farmer data out of every hosted LLM probe. For the current M1 acceptance run, OpenRouter is preferred and Groq is the secondary fallback; Gemini is not an M1 gate while its upstream quota is unstable. Every probe sends only a fixed, non-sensitive test prompt.
 - A provider is not accepted merely because authentication succeeds. Record the product, acquisition time, CRS, resolution, units/scale, valid-pixel count, provenance, and any warnings.
 - Keep raw responses and logs sanitized. Never print request headers, environment values, signed URLs, S3 keys, bearer tokens, or full exception bodies.
 
@@ -20,13 +20,13 @@ Target: validate provider connectivity and bounded data reads without changing p
 | NASA Earthdata | CROPTWIST_EARTHDATA_BEARER_TOKEN | Protected NASA HLS asset reads; CMR STAC discovery itself is public |
 | Copernicus CDSE | CROPTWIST_CDSE_S3_ACCESS_KEY | S3-compatible Sentinel-2 asset reads |
 | Copernicus CDSE | CROPTWIST_CDSE_S3_SECRET_KEY | S3-compatible Sentinel-2 asset reads |
-| Gemini (primary) | CROPTWIST_GEMINI_API_KEY | Primary LLM connectivity probe |
-| Groq (fallback) | CROPTWIST_GROQ_API_KEY | Fallback LLM connectivity probe |
-| OpenRouter (fallback) | CROPTWIST_OPENROUTER_API_KEY | Fallback LLM connectivity probe |
+| OpenRouter (current preferred probe) | CROPTWIST_OPENROUTER_API_KEY | Preferred M1 LLM connectivity probe |
+| Groq (secondary probe) | CROPTWIST_GROQ_API_KEY | Secondary M1 LLM connectivity probe |
+| Gemini (deferred M1 gate) | CROPTWIST_GEMINI_API_KEY | Retained for later verification; not required to pass current M1 LLM gate |
 
 Do not use the Copernicus account password in place of the S3 key pair. WaPOR v3 catalogue and public COG access do not require a user API key.
 
-For the GitHub Actions protected-probe job, add these as **repository Actions secrets** (Settings → Secrets and variables → Actions), never as plain variables: `CROPTWIST_GEMINI_API_KEY`, `CROPTWIST_EARTHDATA_BEARER_TOKEN`, `CROPTWIST_CDSE_S3_ACCESS_KEY`, and `CROPTWIST_CDSE_S3_SECRET_KEY`. The public smoke still runs without them and reports protected probes as blocked; once added, rerun the workflow to perform the fixed Gemini probe and one bounded NASA/CDSE asset-window read. Optional fallback probes use `CROPTWIST_GROQ_API_KEY` and `CROPTWIST_OPENROUTER_API_KEY` only when separately added.
+For the GitHub Actions protected-probe job, add these as **repository Actions secrets** (Settings → Secrets and variables → Actions), never as plain variables: `CROPTWIST_GROQ_API_KEY`, `CROPTWIST_OPENROUTER_API_KEY`, `CROPTWIST_EARTHDATA_BEARER_TOKEN`, `CROPTWIST_CDSE_S3_ACCESS_KEY`, and `CROPTWIST_CDSE_S3_SECRET_KEY`. The smoke probes OpenRouter first and Groq second, records both sanitized results, and passes the LLM gate when at least one returns `live_verified`.
 
 ## Phase 0 — local safety and offline regression
 
@@ -100,17 +100,17 @@ Run only in a disposable local/staging environment with the credentials loaded f
 
 A successful catalogue response is not a successful raster-read test. The public smoke performs a real WaPOR COG window read; NASA and CDSE remain metadata-only until their protected asset reads are run with the respective credentials. A synthetic or mocked raster is never evidence of live data availability.
 
-## Phase 3 — Gemini-first LLM connectivity (fixed prompt only)
+## Phase 3 — OpenRouter/Groq LLM connectivity (fixed prompt only)
 
-The public smoke workflow also calls the existing sanitized `probe_provider("gemini")` when `CROPTWIST_GEMINI_API_KEY` is present. It reports `blocked_missing_gemini_api_key` when the secret is absent; that is not a pass.
+The public smoke workflow calls the existing sanitized `probe_provider("openrouter")` and `probe_provider("groq")` adapters when their API keys are present. OpenRouter is preferred; Groq is the secondary fallback. At least one must return `live_verified`. Missing keys are reported as blocked, never passed.
 
 From mini-services/fieldshift-api, with the key loaded locally:
 
 ~~~bash
-python scripts/probe_llm_providers.py --provider gemini --provider groq --provider openrouter
+python scripts/probe_llm_providers.py --provider openrouter --provider groq
 ~~~
 
-Expected primary success status: Gemini `live_verified`. Groq and OpenRouter are tested as fallbacks and may be `not_configured` if intentionally unused. The probe uses a fixed, non-sensitive instruction and returns sanitized status evidence; it must not be used to submit field records, farmer notes, crop histories, or other user data.
+Expected acceptance: OpenRouter or Groq returns `live_verified`; both providers are tested and reported independently. Gemini remains configured as a later provider fallback but is not required for this M1 run. The probe uses a fixed, non-sensitive instruction and returns sanitized status evidence; it must not be used to submit field records, farmer notes, crop histories, or other user data.
 
 Keep these independent data-sharing gates disabled unless separately reviewed and explicitly approved:
 
@@ -137,7 +137,7 @@ No relevance-labelled corpus is currently bundled; therefore no E5 quality score
 
 Record one row per provider with: test timestamp (UTC), environment name (never secret values), provider/product, test area identifier, date range, metadata discovery status, asset read status, CRS/resolution, units/scale verification, valid-pixel count, provenance completeness, sanitized error category, and reviewer.
 
-Do not mark M1 external-data validation complete until NASA HLS and CDSE each pass a real protected asset-window read, WaPOR passes a real Egypt COG-window read, Gemini (the configured primary provider) returns live_verified, and the offline regression suite passes. Fallback-provider status is recorded separately. E5 remains a separate quality gate requiring reviewed relevance judgements. The public smoke workflow proves discovery and the WaPOR read only; it does not replace protected HLS/CDSE reads, Gemini connectivity, Presto numerical parity, or the E5 judged-corpus benchmark. Run 45083517154 reported `provider_transient_http` with HTTP 503 at 21,049 ms. The outer probe deadline has since been raised to 60s so the configured request timeout/retry/backoff can complete. Never expose response bodies, headers, signed URLs, or secrets.
+Do not mark M1 external-data validation complete until NASA HLS and CDSE each pass a real protected asset-window read, WaPOR passes a real Egypt COG-window read, at least one of OpenRouter or Groq returns live_verified, and the offline regression suite passes. Fallback-provider status is recorded separately. E5 remains a separate quality gate requiring reviewed relevance judgements. The public smoke workflow proves discovery and the WaPOR read only; it does not replace protected HLS/CDSE reads, Gemini connectivity, Presto numerical parity, or the E5 judged-corpus benchmark. Run 45083517154 reported `provider_transient_http` with HTTP 503 at 21,049 ms. The outer probe deadline has since been raised to 60s so the configured request timeout/retry/backoff can complete. Never expose response bodies, headers, signed URLs, or secrets.
 
 
 ## Latest diagnostic refinement (2026-11-22)
