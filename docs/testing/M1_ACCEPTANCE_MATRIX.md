@@ -34,7 +34,7 @@ The latest successful credential-enabled live run **45095264042** confirmed Open
 2. The protected NASA/CDSE reads and WaPOR read are demonstrated by run `45105049079`. OpenRouter and Groq are the only active hosted providers; Gemini is deferred and must not be probed or required. Never expose response bodies, headers, signed URLs, or secrets.
 3. Complete the rights review for the two 2019 FAO-WaPOR Egypt field-label collections (CC_BY declared, license reference blank), preserve raw metadata, exclude generic EWOC codes, resolve 12 spatial intersections and missing grouping fields, then build a spatially grouped manifest. The 2023–2024 FAO Egypt map remains an additional candidate pending exact item terms. CropHarvest is not an Egypt ground-truth substitute; inspect component licenses before any use.
 4. Create/review a bilingual agricultural relevance corpus for E5 and publish Recall@5/@10, MRR, and nDCG by language. Keep semantic retrieval disabled until it passes the agreed threshold.
-5. Defer all regression suites until implementation phases and redesign are complete; run the consolidated verification pass afterward.
+5. Complete the exact-head CI and M2 clean-room PostGIS/browser gates now that the closure changes are in place. A passing software suite closes only the engineering regression gate; it does not replace Presto numerical parity, full monthly S1/S2/ERA5/SRTM ingestion, item-level data rights, or independent spatial-temporal model evaluation.
 
 ## Safety invariants
 
