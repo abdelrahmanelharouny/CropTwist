@@ -17,6 +17,7 @@
 | NASA/USGS SRTMGL1 / NASADEM | Static elevation and derived slope | USGS documents global 1 arc-second (~30 m) SRTM, WGS84 horizontal datum, EGM96 vertical datum, elevations in metres and one-degree tiles | Use the product's official NASA/USGS data-use terms and cite product/version. Do not substitute another DEM silently; record void-fill lineage. | **No first-party SRTM acquisition adapter found** |
 | NASA Harvest Presto | Encoder weights and reference preprocessing | Upstream code is public; TorchGeo checkpoint is MIT-labelled; upstream input pipeline defines band order, normalization and NDVI | NASA Harvest's upstream repository exposes the MIT license and `data/default_model.pt`; preserve the upstream commit and checkpoint hash. Model-code/weight license does not license every source dataset used to pretrain or fine-tune it. The model license and training-data provenance remain separate governance records. Source: https://github.com/nasaharvest/presto | **Parity harness added; parity not yet executed** |
 | CropHarvest | General crop-label training candidate | A multi-source crop dataset is a candidate, not an Egyptian official reference | Audit every component dataset and label source independently; aggregate repository license is not sufficient evidence for all constituent records. | **Not approved for training until component audit** |
+| ESA WorldCereal 2021 global products | Independent coarse crop-type/temporary-cropland and irrigation cross-check | Official ESA describes 10 m annual temporary-crop extent and seasonal maize, winter-cereal/spring-cereal and irrigation products for 2021; products are assembled by agro-ecological zone and seasonal definitions differ across zones | Digital Earth Africa product specifications state CC BY 4.0. Preserve attribution, product/season/AEZ and confidence. These are model-derived maps, not field-survey labels; they distinguish only a limited set of crop groups and are 2021-only. Verify actual valid-pixel coverage for each Egyptian study polygon before use. Never treat map pixels as verified Egyptian field labels. | **License identified; Egypt coverage and local accuracy not yet verified; cross-check only** |
 | CAPMAS / Ministry of Agriculture / Egyptian agencies | Official crop area, crop definitions and classification crosswalks | Official statistics and administrative definitions can support class harmonization and aggregate plausibility checks | Publication availability does not automatically grant field-level label reuse. Capture the exact table/publication, methodology, geography, year, terms and any access restrictions. Aggregate statistics are not field labels. | **Candidate authority; no field-level training approval** |
 
 ## Source-specific interpretation
@@ -30,6 +31,12 @@ Linked item: https://data.apps.fao.org/?lang=en&share=f-52f1a421-df41-404a-b519-
 HiH data export policy: https://www.fao.org/hih-geospatial-platform/faqs/  
 FAO website reuse terms: https://www.fao.org/contact-us/terms/  
 FAO statistical database terms: https://www.fao.org/contact-us/terms/db-terms-of-use/en
+
+### WorldCereal 2021
+
+The official ESA collection offers annual temporary-crop extent and season-specific crop-type/irrigation layers for 2021 at 10 m. Crop-type products identify maize and cereals (wheat, barley and rye grouped together); they are not a full Egyptian crop taxonomy. Products are mosaicked by agro-ecological zone, and adjacent-zone seasonal maps are not directly comparable. Digital Earth Africa's product specification states CC BY 4.0. Use only as an independently derived, limited-class cross-check after checking valid-data coverage and the relevant AEZ/season for each Egyptian study polygon. It is not in-situ ground truth and must not be relabelled as verified field observations.
+
+Sources: https://esa-worldcereal.org/en/products/global-maps ; https://docs.digitalearthafrica.org/en/latest/data_specs/ESA_World_Cereal_specs.html ; https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCereal_2021_MODELS_v100
 
 ### Copernicus Sentinel
 
