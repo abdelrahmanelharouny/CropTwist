@@ -150,6 +150,7 @@ def main() -> int:
         "secrets_used": bool(
             settings.earthdata_bearer_token
             or (settings.cdse_s3_access_key and settings.cdse_s3_secret_key)
+            or ai_settings.gemini_api_key.get_secret_value()
             or ai_settings.groq_api_key.get_secret_value()
             or ai_settings.openrouter_api_key.get_secret_value()
         ),
@@ -395,15 +396,15 @@ def main() -> int:
         }
         failures.append("WaPOR Egypt L2 COG-window validation failed")
 
-    # Gemini is intentionally not a release gate while its upstream quota is
-    # unstable. Probe the already-configured OpenRouter/Groq fallbacks using
-    # the same fixed, non-sensitive prompt. At least one must be live_verified;
-    # both are recorded independently so an unavailable secondary is visible.
+    # Gemini is the configured primary. Groq and OpenRouter are ordered
+    # fallbacks. Probe every configured provider with the same fixed,
+    # non-sensitive prompt and keep each result independently visible.
     configured_llm_providers = [
         name
         for name, key in (
-            ("openrouter", ai_settings.openrouter_api_key),
+            ("gemini", ai_settings.gemini_api_key),
             ("groq", ai_settings.groq_api_key),
+            ("openrouter", ai_settings.openrouter_api_key),
         )
         if key.get_secret_value()
     ]
@@ -420,14 +421,16 @@ def main() -> int:
             if item.get("status") == "live_verified"
         ]
         evidence["selected_llm_provider"] = (
-            next((name for name in ("openrouter", "groq")
+            next((name for name in ("gemini", "groq", "openrouter")
                   if any(item.get("provider") == name for item in verified)), None)
         )
-        if not verified:
-            failures.append("Neither OpenRouter nor Groq passed the fixed live provider probe")
+        if not any(item.get("provider") == "gemini" and item.get("status") == "live_verified" for item in llm_results):
+            failures.append("Gemini primary provider did not pass the fixed live provider probe")
+        if not any(item.get("provider") in {"groq", "openrouter"} and item.get("status") == "live_verified" for item in llm_results):
+            failures.append("No configured Groq/OpenRouter fallback passed the fixed live provider probe")
     else:
-        evidence["llm_provider_probes"] = "blocked_missing_openrouter_and_groq_api_keys"
-        failures.append("No OpenRouter or Groq API key is configured for the M1 live provider probe")
+        evidence["llm_provider_probes"] = "blocked_missing_all_hosted_llm_api_keys"
+        failures.append("No Gemini primary or hosted fallback API key is configured for the M1 live provider probe")
 
     evidence["failures"] = failures
     evidence["overall_status"] = "public_checks_passed" if not failures else "failed"
