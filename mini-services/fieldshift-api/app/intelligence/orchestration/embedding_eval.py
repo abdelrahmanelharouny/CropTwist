@@ -110,8 +110,15 @@ async def evaluate_embedding_provider(
     documents: list[dict[str, str]],
     queries: list[dict[str, Any]],
     batch_size: int = 32,
+    query_languages: dict[str, str] | None = None,
+    required_language_groups: tuple[str, ...] = ("ar", "en"),
 ) -> dict[str, Any]:
-    """Embed a curated corpus locally and score its relevance judgements."""
+    """Embed a curated corpus locally and score its relevance judgements.
+
+    When language labels are supplied, return fail-closed Arabic/English
+    slices as well as the aggregate metrics. This prevents a bilingual model
+    from appearing acceptable based on a corpus dominated by one language.
+    """
     if (
         not isinstance(documents, list)
         or not documents
@@ -173,12 +180,22 @@ async def evaluate_embedding_provider(
         scored = [(_cosine(vector, doc_vector), doc_id) for doc_id, doc_vector in zip(document_ids, doc_vectors, strict=True)]
         rankings[qid] = [doc_id for _, doc_id in sorted(scored, key=lambda item: (-item[0], item[1]))]
     qrels = {item["id"]: set(item["relevant_document_ids"]) for item in queries}
-    result = evaluate_rankings(
-        query_ids=query_ids,
-        document_ids=document_ids,
-        rankings=rankings,
-        relevant_document_ids=qrels,
-    )
+    if query_languages is not None:
+        result = evaluate_stratified_rankings(
+            query_ids=query_ids,
+            document_ids=document_ids,
+            rankings=rankings,
+            relevant_document_ids=qrels,
+            query_languages=query_languages,
+            required_groups=required_language_groups,
+        )
+    else:
+        result = evaluate_rankings(
+            query_ids=query_ids,
+            document_ids=document_ids,
+            rankings=rankings,
+            relevant_document_ids=qrels,
+        )
     result["provider"] = provider.name
     result["model"] = provider.model
     return result
