@@ -121,8 +121,28 @@ A credential-free GitHub Actions run queried the public RDM catalog and download
 - Africa archives downloaded and checksum-verified: **8 / 8**
 - Archive members scanned: **63**
 - Egypt/locality text matches in archive metadata/text: **0**
-- No Egypt reference collection was identified in this discovery pass.
+- The first-pass scanner reported zero Egypt matches because it did not inspect nested per-collection ZIPs. Manual review of the downloaded 2019 Africa archive identified two Egyptian FAO-WaPOR collections (see corrected finding below).
 
 Evidence: GitHub Actions run [45157390222](https://github.com/abdelrahmanelharouny/CropTwist/actions/runs/45157390222), artifact `egypt-reference-discovery-report` (artifact ID `14808543228`, SHA-256 `1499b92618629d2dfe1ec1c13981746a05e355dad68dd9809de3e6323828b392`).
 
 **Interpretation limit:** this is a negative metadata/text search, not proof that no Egypt geometry or observations exist anywhere in WorldCereal. It does not inspect every vector attribute semantically or every possible place-name spelling. Do not treat the result as ground-truth availability. Keep the FAO Egypt 2023–2024 map as the primary Egyptian research candidate pending exact item-level terms and data retrieval; pursue Egyptian ministry/university/field survey sources in parallel.
+
+
+## Confirmed Egyptian WorldCereal collections found in nested 2019 archive
+
+Manual inspection of the downloaded and checksum-verified 2019 Africa archive found two nested Egypt collection ZIPs that the first scanner version missed:
+
+| Collection ID | Original dataset | Observations | Observation dates | Bounding box (lon/lat) | Declared license |
+|---|---|---:|---|---|---|
+| 2019_egy_faowapor1_poly_111 | FAO WAPOR - field data Egypt 2019 | 900 | 2019-08-05 (field sheet collection 2019-08-03 to 2019-08-08) | 31.294260, 30.484687 to 31.574320, 30.808660 | CC_BY |
+| 2019_egy_faowapor2_poly_111 | FAO WAPOR - field data Egypt 2019 | 634 | 2019-03-14 to 2019-03-28 | 31.237126, 30.374918 to 31.605252, 30.731202 | CC_BY |
+
+Both metadata workbooks state:
+- Observation method: FieldObservationSurvey
+- Original geometry: FieldRegisteredPolygon; curated geometry: Polygon
+- Original provider: FAO-WAPOR (FAO Water Productivity Open-access portal)
+- Declared license type: CC_BY; license-reference cell is blank
+- Required citation: FAO WaPOR, 2022. Field data Egypt 2019. https://www.fao.org/in-action/remote-sensing-for-water-productivity/en/
+- WorldCereal curation PDFs report crop-type and land-cover confidence scores of 93, state that no filtering/corrections/geometry transformations were performed, and describe spatial accuracy validation using systematic random sampling and satellite imagery.
+
+**Scientific disposition:** these are strong Egyptian field-label candidates and should be prioritized for an ingestion/evaluation spike. The declared CC_BY value is source metadata, not a substitute for archiving the underlying rights statement; verify the FAO source terms and attribution before training or redistribution. The two collections may overlap spatially and temporally; deduplicate/group by field ID and spatial intersection before any split. Do not count the 1,534 observations as 1,534 independent farms without inspecting the actual feature attributes. Parse the GeoParquet files, validate geometry and label distributions, and build spatial-temporal group splits before training.
