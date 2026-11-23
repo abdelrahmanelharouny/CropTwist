@@ -146,3 +146,23 @@ Both metadata workbooks state:
 - WorldCereal curation PDFs report crop-type and land-cover confidence scores of 93, state that no filtering/corrections/geometry transformations were performed, and describe spatial accuracy validation using systematic random sampling and satellite imagery.
 
 **Scientific disposition:** these are strong Egyptian field-label candidates and should be prioritized for an ingestion/evaluation spike. The declared CC_BY value is source metadata, not a substitute for archiving the underlying rights statement; verify the FAO source terms and attribution before training or redistribution. The two collections may overlap spatially and temporally; deduplicate/group by field ID and spatial intersection before any split. Do not count the 1,534 observations as 1,534 independent farms without inspecting the actual feature attributes. Parse the GeoParquet files, validate geometry and label distributions, and build spatial-temporal group splits before training.
+
+
+## Automated GeoParquet QA — 2026-11-23
+
+Corrected nested-archive workflow [45158997515](https://github.com/abdelrahmanelharouny/CropTwist/actions/runs/45158997515) successfully profiled both Egyptian GeoParquet files with PyArrow and Shapely. Artifact ID: 14808784478; SHA-256: 92988e61450802406615e0f9d1d98e04ee8dcaa10fdf6d9eaa97a000dcdeeb2e.
+
+| Collection | Actual GeoParquet rows | Valid geometries | Crop-specific EWOC-coded rows* | Notable QA |
+|---|---:|---:|---:|---|
+| 2019_egy_faowapor1_poly_111 | 898 | 898/898 | 290 | Metadata says 900 observations (2-row discrepancy); 598 CroType values are null; 608 rows map to generic EWOC code 1000000000 |
+| 2019_egy_faowapor2_poly_111 | 634 | 634/634 | 588 | 20 missing Field_ID and Block_ID values; 20 missing original FW_Date values; curated valid_time is populated |
+
+*For this profile, generic/non-crop EWOC codes 1000000000, 1100000000, 6000000000 and 7000000000 are excluded from the crop-specific count. This is a QA rule for the candidate manifest, not a final label taxonomy.
+
+Across both files: **1,532 actual rows**, all geometries parse and validate, no empty geometries, and no exact duplicate geometries across the collections. The spatial index found **12 cross-collection polygon pairs with positive-area intersections**. Those intersecting pairs must be assigned to the same spatial split group or reviewed/deduplicated; a random row split is prohibited.
+
+The crop-specific EWOC code distribution is highly imbalanced. Collection 1 is dominated by rice (206) and maize (57); collection 2 by wheat (270), permanent leguminous crops (144), onions (47), oranges (37) and potatoes (26), with many classes having fewer than 10 examples. Do not claim a balanced 23-class training set or publish an accuracy metric from a random split.
+
+The source's quality_score_ct and quality_score_lc are constant at 93 for every row in both files. Treat 93 as a source/curation score, **not** a per-observation probability or independently measured model accuracy. In collection 2, Field_ID has 20 non-null distinct IDs and 20 missing rows; Block_ID has 82 non-null distinct IDs and 20 missing rows. In collection 1, sampleID is unique per polygon but is not evidence of independent farms; H3 grouping fields cover only 2 coarse cells and 6 finer cells. Use spatial blocks/geometry intersections as the split unit, not sampleID.
+
+**Decision:** candidate for a controlled research ingestion and representation-learning/evaluation spike after source-rights confirmation. It is not yet training-approved. Preserve original CT, LC, CroType, ewoc_code, validityTi, valid_time, sampleID, Field_ID, Block_ID, and null flags in the immutable raw layer. Build an explicit label mapping that excludes generic classes, then create spatially grouped splits and compare against the separate 2023–2024 FAO Egypt reference source.
