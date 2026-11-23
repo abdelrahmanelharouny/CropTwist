@@ -53,7 +53,7 @@ def _matching_records(payload: Any) -> list[dict[str, Any]]:
         if not matched:
             continue
         # Prefer objects that actually identify a collection or resource.
-        if not any(key in item for key in ("id", "collection", "collection_id", "name", "title")):
+        if not any(key in item for key in ("id", "collection", "collection_id")):
             continue
         fingerprint = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
         if fingerprint in seen:
