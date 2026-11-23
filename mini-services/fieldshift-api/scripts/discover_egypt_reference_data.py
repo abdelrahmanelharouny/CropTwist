@@ -23,7 +23,7 @@ import httpx
 RDM_COLLECTIONS_URL = "https://ewoc-rdm-api.iiasa.ac.at/collections"
 ZENODO_RECORD_URL = "https://zenodo.org/api/records/18769612"
 SEARCH_TERMS = (
-    "egypt", "egyptian", "zankalon", "zankaloun", "sidi ghazi",
+    "egypt", "egyptian", "_egy_", "zankalon", "zankaloun", "sidi ghazi",
     "side ghazi", "mallawi", "minya", "sharqia", "kafr el sheikh",
 )
 MAX_RESPONSE_BYTES = 50 * 1024 * 1024
@@ -144,6 +144,45 @@ def _scan_archive(path: Path) -> dict[str, Any]:
                             "matched_terms": matched,
                             "text": line[:4000],
                         })
+            elif suffix == ".zip":
+                # WorldCereal Africa archives contain one ZIP per collection.
+                # Inspect the nested collection filename and its own metadata
+                # workbook; otherwise country-coded IDs such as "_egy_" are
+                # invisible to a top-level metadata-only scan.
+                nested_name = Path(name).name
+                filename_matches = [term for term in SEARCH_TERMS if term in nested_name.lower()]
+                if filename_matches:
+                    result["matches"].append({
+                        "source_file": name,
+                        "matched_terms": filename_matches,
+                        "text": nested_name,
+                    })
+                try:
+                    with zipfile.ZipFile(BytesIO(archive.read(name))) as nested:
+                        for inner in nested.infolist():
+                            if inner.is_dir() or inner.file_size > 20 * 1024 * 1024:
+                                continue
+                            inner_suffix = Path(inner.filename).suffix.lower()
+                            source_name = f"{name}!/{inner.filename}"
+                            if inner_suffix == ".xlsx":
+                                result["matches"].extend(_scan_xlsx_bytes(nested.read(inner), source_name))
+                            elif inner_suffix in {".csv", ".tsv", ".txt", ".json", ".xml"}:
+                                inner_text = nested.read(inner).decode("utf-8-sig", errors="replace")
+                                for line_number, line in enumerate(inner_text.splitlines(), start=1):
+                                    lowered = line.lower()
+                                    matched = [term for term in SEARCH_TERMS if term in lowered]
+                                    if matched:
+                                        result["matches"].append({
+                                            "source_file": source_name,
+                                            "line": line_number,
+                                            "matched_terms": matched,
+                                            "text": line[:4000],
+                                        })
+                except zipfile.BadZipFile:
+                    result["matches"].append({
+                        "source_file": name,
+                        "error": "nested ZIP member is not a valid archive",
+                    })
     return result
 
 
