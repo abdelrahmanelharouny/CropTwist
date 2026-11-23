@@ -236,3 +236,10 @@ def test_probe_omits_invalid_http_status(monkeypatch):
     assert result["error_category"] == "provider_transient_http"
     assert "http_status" not in result
     assert "secret" not in str(result)
+
+def test_default_provider_chain_excludes_unused_ollama():
+    from app.intelligence.config import ai_settings
+
+    assert ai_settings.ollama_enabled is False
+    assert ai_settings.provider_order == ("openrouter", "groq", "gemini")
+\n
