@@ -242,8 +242,9 @@ def test_default_provider_chain_excludes_unused_ollama():
 
     assert ai_settings.ollama_enabled is False
     assert ai_settings.provider_order == ("openrouter", "groq", "gemini")
-\n
+
+
 
 def test_live_probe_budget_allows_reasoning_models_to_finish():
     assert provider_diagnostics.PROBE_MAX_OUTPUT_TOKENS == 128
-\n
+
