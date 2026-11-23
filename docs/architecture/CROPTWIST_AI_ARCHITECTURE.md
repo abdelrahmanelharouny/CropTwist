@@ -177,3 +177,10 @@ not prove Arabic quality, latency, RAM consumption or real local inference.
 References: [Ollama native chat API](https://docs.ollama.com/api/chat),
 [Qwen3 Ollama tag](https://ollama.com/library/qwen3/tags),
 [Qwen3-4B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507).
+
+
+## Hosted-provider routing decision — 2026-11-23
+
+The active hosted-provider default is **OpenRouter → Groq**. Gemini is temporarily deferred and must not be included in the active provider order, called by smoke checks, or required by acceptance gates. Ollama remains disabled and is not part of the active chain; no local runtime or model download is required. The provider registry may retain dormant adapters for future explicit re-evaluation, but the runtime chain must follow the two-provider order above.
+
+Only fixed, non-sensitive public/synthetic prompts may be sent to hosted-provider health checks. Field/farmer data egress remains disabled by default and must not silently fall back to a hosted provider.
