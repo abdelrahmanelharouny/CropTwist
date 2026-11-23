@@ -150,7 +150,8 @@ def main() -> int:
         "secrets_used": bool(
             settings.earthdata_bearer_token
             or (settings.cdse_s3_access_key and settings.cdse_s3_secret_key)
-            or ai_settings.gemini_api_key.get_secret_value()
+            or ai_settings.groq_api_key.get_secret_value()
+            or ai_settings.openrouter_api_key.get_secret_value()
         ),
     }
     failures: list[str] = []
@@ -375,17 +376,43 @@ def main() -> int:
         }
         failures.append("WaPOR Egypt L2 COG-window validation failed")
 
-    if ai_settings.gemini_api_key.get_secret_value():
+    # Gemini is intentionally not a release gate while its upstream quota is
+    # unstable. Probe the already-configured OpenRouter/Groq fallbacks using
+    # the same fixed, non-sensitive prompt. At least one must be live_verified;
+    # both are recorded independently so an unavailable secondary is visible.
+    configured_llm_providers = [
+        name
+        for name, key in (
+            ("openrouter", ai_settings.openrouter_api_key),
+            ("groq", ai_settings.groq_api_key),
+        )
+        if key.get_secret_value()
+    ]
+    if configured_llm_providers:
         try:
-            gemini = asyncio.run(probe_provider("gemini"))
-            evidence["gemini_primary_probe"] = gemini
-            if gemini.get("status") != "live_verified":
-                failures.append("Gemini primary provider live probe did not return live_verified")
-        except Exception as exc:
-            evidence["gemini_primary_probe"] = {"status": "failed", "error_type": type(exc).__name__}
-            failures.append("Gemini primary provider live probe failed")
+            llm_results = asyncio.run(
+                asyncio.gather(*(probe_provider(name) for name in configured_llm_providers))
+            )
+        except RuntimeError:
+            async def _probe_configured_llm_providers():
+                return await asyncio.gather(
+                    *(probe_provider(name) for name in configured_llm_providers)
+                )
+            llm_results = asyncio.run(_probe_configured_llm_providers())
+        evidence["llm_provider_probes"] = llm_results
+        verified = [
+            item for item in llm_results
+            if item.get("status") == "live_verified"
+        ]
+        evidence["selected_llm_provider"] = (
+            next((name for name in ("openrouter", "groq")
+                  if any(item.get("provider") == name for item in verified)), None)
+        )
+        if not verified:
+            failures.append("Neither OpenRouter nor Groq passed the fixed live provider probe")
     else:
-        evidence["gemini_primary_probe"] = "blocked_missing_gemini_api_key"
+        evidence["llm_provider_probes"] = "blocked_missing_openrouter_and_groq_api_keys"
+        failures.append("No OpenRouter or Groq API key is configured for the M1 live provider probe")
 
     evidence["failures"] = failures
     evidence["overall_status"] = "public_checks_passed" if not failures else "failed"
