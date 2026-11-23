@@ -78,7 +78,7 @@ jobs:
 
       - name: Compile optional Presto parity harness
         working-directory: .
-        run: python -m py_compile scripts/verify_presto_numerical_parity.py
+        run: python -m py_compile mini-services/fieldshift-api/scripts/verify_presto_numerical_parity.py
 
       - name: Apply migrations to head
         run: alembic upgrade head
