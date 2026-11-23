@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib
+from importlib import metadata
 import json
 import math
 import subprocess
@@ -129,7 +130,7 @@ def main() -> int:
         "upstream_repo_revision": git_revision(repo),
         "upstream_weights_sha256": sha256_file(weights),
         "torch_version": torch.__version__,
-        "torchgeo_version": importlib.metadata.version("torchgeo"),
+        "torchgeo_version": metadata.version("torchgeo"),
         "device": args.device,
         "record_count": len(records),
         "embedding_dimension": 128,
