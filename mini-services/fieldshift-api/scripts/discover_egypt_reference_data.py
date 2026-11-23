@@ -10,11 +10,9 @@ Run from mini-services/fieldshift-api:
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import json
 import re
-import sys
 import zipfile
 from pathlib import Path
 from typing import Any
