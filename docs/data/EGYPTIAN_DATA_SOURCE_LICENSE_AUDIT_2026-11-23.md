@@ -99,3 +99,14 @@ A boolean supplied by an operator is not itself proof. Keep `label_source_verifi
 3. Implement and record one explicit S2 common-grid/resampling policy (10 m or 20 m) with SCL QA.
 4. Add an SRTM/NASADEM adapter with EGM96 metadata, void handling and slope algorithm.
 5. Keep model-weight license, source-data licenses and crop-label licenses as separate records.
+
+
+## Addendum: 2026 WorldCereal reference-data release and FAO reuse boundary
+
+A newer WorldCereal harmonized reference-data release is available: Zenodo record 18769612, version 1.1.0, published 2026-02-25. It includes separate Africa ZIP archives for 2018, 2019, 2020, 2021, 2022, 2023, 2024 and 2025. The publisher explicitly states that each individual dataset retains the original data holder's license, recorded in the accompanying metadata workbook. This is a concrete discovery path beyond the earlier 2021 map product, but an Africa archive is not proof of Egypt coverage. The new bounded discovery script at `mini-services/fieldshift-api/scripts/discover_egypt_reference_data.py` queries the public RDM catalog and inspects the Africa archive metadata for Egypt/locality matches and per-collection license terms. No Egypt match is claimed until the script's report is produced and reviewed.
+
+FAO's general website terms state that most website content can be reused for private study, research, teaching and non-commercial products/services with attribution; adaptation, translation, resale and other commercial reuse require permission. FAO corporate statistical database terms have separate restrictions against using those datasets to promote a commercial enterprise, even where CC BY 4.0 is the default, and third-party content may carry different terms. These general rules do not replace the exact FAO map item's metadata or the original data holder's terms. For CropTwist's commercial path, the 2023–2024 FAO Egypt map remains blocked until written commercial reuse permission or an explicit commercial-compatible item license is archived.
+
+**Training fallback:** if the 2026 RDM Africa metadata scan finds no Egypt collection, use WorldCereal 2021 map pixels only in an explicitly separated weak-supervision experiment (never as ground truth), use official governorate crop statistics only for aggregate plausibility checks, and keep the crop classifier out of production until independent Egyptian field/parcel labels are licensed and reviewed. Presto representation learning and the crop-label classifier remain separate deliverables.
+
+Sources: https://zenodo.org/records/18769612 ; https://www.fao.org/contact-us/terms/ ; https://www.fao.org/contact-us/terms/db-terms-of-use/en ; https://worldcereal.github.io/worldcereal-documentation/rdm/explore.html
