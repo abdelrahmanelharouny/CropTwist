@@ -219,7 +219,10 @@ class ProviderRegistry:
 provider_registry = ProviderRegistry()
 provider_registry.register(LegacyBridgeProvider())
 
-_DEFAULT_PROVIDER_NAMES = frozenset({"ollama", "gemini", "groq", "openrouter"})
+# Only the release-approved hosted providers are registered in the active
+# registry. Gemini and Ollama remain deliberately unavailable, not fallback
+# candidates that can be re-enabled by an environment variable.
+_DEFAULT_PROVIDER_NAMES = frozenset({"groq", "openrouter"})
 _DEFAULT_PROVIDER_LOCK = Lock()
 _DEFAULT_PROVIDERS_LOADED = False
 
