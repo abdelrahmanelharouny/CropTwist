@@ -255,6 +255,7 @@ function SessionHeader({
             activeSub={activeSub}
             onNavigate={(tab, sub) => onNavigate(tab, sub)}
             onOpenOnboarding={onOpenOnboarding}
+            onShare={handleShare}
           />
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-700 text-emerald-50">
             <Sprout className="h-4.5 w-4.5" aria-hidden />
