@@ -11,6 +11,8 @@ class _FakeProvider:
     async def generate(self, messages, **kwargs):
         assert messages[-1]["content"] == "Reply with exactly CROPTWIST_PROVIDER_OK."
         assert kwargs["request_id"] == "croptwist-live-provider-probe"
+        assert kwargs["max_tokens"] == provider_diagnostics.PROBE_MAX_OUTPUT_TOKENS
+        assert kwargs["max_tokens"] >= 128
         class Result:
             content = "CROPTWIST_PROVIDER_OK"
             model = "fake-model"
@@ -102,8 +104,20 @@ def test_probe_timeout_is_reported_without_raw_exception_details(monkeypatch):
     monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Slow())
     result = asyncio.run(provider_diagnostics.probe_provider("slow"))
     assert result["status"] == "failed"
-    assert result["error_category"] == "provider_probe_failed"
+    assert result["error_category"] == "provider_timeout"
 
+
+
+
+
+def test_probe_timeout_covers_provider_retry_budget():
+    from app.intelligence.config import ai_settings
+
+    configured_budget = (
+        ai_settings.ai_provider_timeout_seconds * (ai_settings.ai_provider_max_retries + 1)
+        + ai_settings.ai_provider_max_backoff_seconds * ai_settings.ai_provider_max_retries
+    )
+    assert provider_diagnostics.PROBE_TIMEOUT_SECONDS > configured_budget
 
 
 def test_probe_does_not_verify_an_unexpected_nonempty_response(monkeypatch):
@@ -181,3 +195,56 @@ def test_legacy_bridge_probe_marks_only_fixed_synthetic_prompt_non_sensitive(mon
     assert result["status"] == "live_verified"
     assert captured["kwargs"]["field_sensitive"] is False
     assert captured["messages"][-1]["content"] == "Reply with exactly CROPTWIST_PROVIDER_OK."
+
+
+def test_probe_exposes_only_bounded_http_status_for_transient_failure(monkeypatch):
+    class TransientFailure(RuntimeError):
+        category = "provider_transient_http"
+        http_status = 429
+
+    class Broken:
+        name = "gemini"
+        model = "gemini-test"
+        configured = True
+
+        async def generate(self, messages, **kwargs):
+            raise TransientFailure("raw response body must never escape")
+
+    monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Broken())
+    result = asyncio.run(provider_diagnostics.probe_provider("gemini"))
+    assert result["status"] == "failed"
+    assert result["error_category"] == "provider_transient_http"
+    assert result["http_status"] == 429
+    assert "raw response body" not in str(result)
+
+
+def test_probe_omits_invalid_http_status(monkeypatch):
+    class MalformedFailure(RuntimeError):
+        category = "provider_transient_http"
+        http_status = "429 with secret"
+
+    class Broken:
+        name = "gemini"
+        model = "gemini-test"
+        configured = True
+
+        async def generate(self, messages, **kwargs):
+            raise MalformedFailure("upstream failed")
+
+    monkeypatch.setattr(provider_diagnostics.provider_registry, "get", lambda name: Broken())
+    result = asyncio.run(provider_diagnostics.probe_provider("gemini"))
+    assert result["error_category"] == "provider_transient_http"
+    assert "http_status" not in result
+    assert "secret" not in str(result)
+
+def test_default_provider_chain_excludes_unused_ollama():
+    from app.intelligence.config import ai_settings
+
+    assert ai_settings.ollama_enabled is False
+    assert ai_settings.provider_order == ("openrouter", "groq")
+
+
+
+def test_live_probe_budget_allows_reasoning_models_to_finish():
+    assert provider_diagnostics.PROBE_MAX_OUTPUT_TOKENS == 128
+

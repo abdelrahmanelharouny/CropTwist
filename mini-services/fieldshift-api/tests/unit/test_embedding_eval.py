@@ -45,7 +45,53 @@ def test_provider_benchmark_uses_query_adapter_when_available():
         queries=[{"id": "q1", "text": "زراعة القمح", "relevant_document_ids": ["d1"]}],
     ))
     assert result["metrics"]["recall@1"] == 1.0
+
     assert result["provider"] == "fake"
+
+
+def test_provider_benchmark_can_require_arabic_and_english_quality_slices():
+    class FakeProvider:
+        name = "fake"
+        model = "fake-model"
+
+        async def embed(self, texts):
+            return [[1.0, 0.0] if "wheat" in text else [0.0, 1.0] for text in texts]
+
+        async def embed_query(self, text):
+            return [1.0, 0.0] if "قمح" in text or "wheat" in text else [0.0, 1.0]
+
+    result = asyncio.run(evaluate_embedding_provider(
+        FakeProvider(),
+        documents=[
+            {"id": "d1", "text": "wheat cultivation"},
+            {"id": "d2", "text": "maize cultivation"},
+        ],
+        queries=[
+            {"id": "ar-1", "text": "زراعة القمح", "relevant_document_ids": ["d1"]},
+            {"id": "en-1", "text": "wheat cultivation", "relevant_document_ids": ["d1"]},
+        ],
+        query_languages={"ar-1": "ar-EG", "en-1": "en-GB"},
+    ))
+    assert result["language_query_counts"] == {"ar": 1, "en": 1}
+    assert result["by_language"]["ar"]["metrics"]["recall@1"] == 1.0
+    assert result["by_language"]["en"]["metrics"]["recall@1"] == 1.0
+
+
+def test_provider_benchmark_fails_closed_when_bilingual_labels_are_incomplete():
+    class FakeProvider:
+        name = "fake"
+        model = "fake-model"
+
+        async def embed(self, texts):
+            return [[1.0, 0.0] for _ in texts]
+
+    with pytest.raises(ValueError, match="missing required language groups: en"):
+        asyncio.run(evaluate_embedding_provider(
+            FakeProvider(),
+            documents=[{"id": "d1", "text": "document"}],
+            queries=[{"id": "q1", "text": "query", "relevant_document_ids": ["d1"]}],
+            query_languages={"q1": "ar-EG"},
+        ))
 
 def test_knowledge_chunk_size_respects_multilingual_model_context():
     from app.intelligence.orchestration.knowledge import chunk_document

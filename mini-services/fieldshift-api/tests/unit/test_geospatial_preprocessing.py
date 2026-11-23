@@ -53,6 +53,58 @@ def _read(assets, geo):
     )
 
 
+
+
+def test_cdse_aws_credentials_are_routed_through_rasterio_session(monkeypatch):
+    from rasterio import session as rasterio_session
+
+    captured = {}
+
+    class FakeAWSSession:
+        def __init__(self, **kwargs):
+            captured["session"] = kwargs
+
+    class FakeEnv:
+        def __init__(self, *, session=None, **kwargs):
+            captured["env_session"] = session
+            captured["options"] = kwargs
+
+    monkeypatch.setattr(rasterio_session, "AWSSession", FakeAWSSession)
+    monkeypatch.setattr(rasterio, "Env", FakeEnv)
+
+    env = pre._rasterio_env_context(
+        rasterio,
+        {
+            "AWS_ACCESS_KEY_ID": "test-access-key",
+            "AWS_SECRET_ACCESS_KEY": "test-secret-key",
+            "AWS_DEFAULT_REGION": "default",
+            "AWS_S3_ENDPOINT": "eodata.dataspace.copernicus.eu",
+            "AWS_VIRTUAL_HOSTING": "FALSE",
+            "AWS_HTTPS": "YES",
+        },
+    )
+
+    assert isinstance(env, FakeEnv)
+    assert captured["session"] == {
+        "aws_access_key_id": "test-access-key",
+        "aws_secret_access_key": "test-secret-key",
+        "region_name": "default",
+        "endpoint_url": "eodata.dataspace.copernicus.eu",
+    }
+    assert captured["env_session"] is not None
+    assert "AWS_ACCESS_KEY_ID" not in captured["options"]
+    assert "AWS_SECRET_ACCESS_KEY" not in captured["options"]
+    assert captured["options"]["AWS_VIRTUAL_HOSTING"] == "FALSE"
+
+
+def test_cdse_aws_credentials_require_complete_pair_and_endpoint():
+    with pytest.raises(ValueError, match="complete CDSE S3 credentials"):
+        pre._rasterio_env_context(
+            rasterio,
+            {"AWS_ACCESS_KEY_ID": "test-access-key"},
+        )
+
+
 class TestWindowedReading:
     def test_window_is_field_bbox_not_full_scene(self, clean_scene):
         geo = fixture_field_geojson()

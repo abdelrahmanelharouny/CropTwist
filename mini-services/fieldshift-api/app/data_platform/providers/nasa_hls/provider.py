@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -244,7 +245,24 @@ class NasaHlsProvider:
                     gdal_env=gdal_env,
                 )
             except ProviderUnavailable as exc:
-                warnings.append(f"Scene {scene_id}: {exc}")
+                detail = next(
+                    (item for item in getattr(exc, "details", []) if isinstance(item, dict)),
+                    {},
+                )
+                reason = detail.get("reason")
+                safe_reason = (
+                    reason
+                    if isinstance(reason, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", reason)
+                    else type(exc).__name__
+                )
+                status_code = detail.get("http_status")
+                failure_code = detail.get("failure_code")
+                warning = f"Scene {scene_id}: protected asset read failed ({safe_reason})"
+                if isinstance(failure_code, str) and re.fullmatch(r"[a-z0-9_]{1,64}", failure_code):
+                    warning += f" failure_code:{failure_code}"
+                if isinstance(status_code, int) and not isinstance(status_code, bool) and 100 <= status_code <= 599:
+                    warning += f" http_status:{status_code}"
+                warnings.append(warning)
                 logger.warning("nasa_hls scene degraded", extra={"scene_id": scene_id})
                 continue
             observations.extend(scene_obs)
@@ -376,7 +394,7 @@ class NasaHlsProvider:
     # ----------------------------------------------------------------- auth
     def _earthdata_auth(self) -> dict[str, str]:
         """NASA Earthdata Login credential resolution (settings only)."""
-        token = settings.earthdata_bearer_token
+        token = _normalize_earthdata_bearer_token(settings.earthdata_bearer_token)
         if token:
             return {"bearer_token": token}
         if settings.earthdata_username and settings.earthdata_password:
@@ -413,6 +431,78 @@ class NasaHlsProvider:
 
 
 # ------------------------------------------------------------------ helpers
+
+
+
+
+def _normalize_earthdata_bearer_token(value: str | None) -> str | None:
+    """Accept either a raw EDL token or a copied 'Bearer <token>' value."""
+    if not isinstance(value, str):
+        return None
+    token = value.strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    return token or None
+
+
+def _safe_http_status_from_exception(exc: Exception) -> int | None:
+    """Extract only a numeric HTTP status from a GDAL exception message."""
+    match = re.search(
+        r"(?:HTTP response code|HTTP status(?: code)?)\D{0,12}([1-5][0-9]{2})",
+        str(exc),
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    status_code = int(match.group(1))
+    return status_code if 100 <= status_code <= 599 else None
+
+
+
+
+def _required_surfaces_for_indices(variables: list[str]) -> list[str]:
+    """Read only sensor surfaces required by the requested indices."""
+    from app.vegetation.indices import INDEX_REQUIREMENTS
+
+    required = {
+        surface
+        for variable in variables
+        for surface in INDEX_REQUIREMENTS.get(variable, ())
+    }
+    return [
+        surface
+        for surface in ("red", "nir", "blue", "green", "swir1", "swir2")
+        if surface in required
+    ]
+
+
+
+
+def _safe_gdal_failure_code(exc: Exception) -> str:
+    """Map GDAL error text to a fixed, non-sensitive diagnostic code."""
+    status_code = _safe_http_status_from_exception(exc)
+    if status_code is not None:
+        return f"http_{status_code}"
+    message = str(exc).lower()
+    if "certificate" in message or "ssl" in message or "tls" in message:
+        return "tls_validation_error"
+    if "could not resolve host" in message or "name or service not known" in message:
+        return "dns_resolution_error"
+    if "timed out" in message or "timeout" in message:
+        return "network_timeout"
+    if "not recognized as a supported file format" in message:
+        return "unsupported_raster_format"
+    if "no such file" in message or "not found" in message:
+        return "asset_not_found"
+    if "access denied" in message or "forbidden" in message:
+        return "asset_access_denied"
+    if "unauthorized" in message:
+        return "earthdata_unauthorized"
+    if "curl error" in message:
+        return "curl_transport_error"
+    return "raster_read_failed"
+
+
 def hls_catalog_url() -> str | None:
     return settings.nasa_hls_stac_base_url.rstrip("/") + hls_catalog.STAC_SEARCH_PATH
 
@@ -549,6 +639,13 @@ def _gdal_env_options(auth: dict[str, str]) -> dict[str, str]:
         "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
         "VSI_CACHE": "TRUE",
         "GDAL_HTTP_TIMEOUT": str(int(settings.nasa_hls_timeout_seconds)),
+        # LP DAAC protected COG endpoints can redirect authenticated GETs to
+        # object storage while their HEAD response follows a different auth
+        # path. Force GDAL's initial byte-range GET instead of HEAD; retry
+        # transient range failures without downloading whole scenes.
+        "CPL_VSIL_CURL_USE_HEAD": "NO",
+        "GDAL_HTTP_MAX_RETRY": "3",
+        "GDAL_HTTP_RETRY_DELAY": "1",
     }
     token = auth.get("bearer_token")
     if token:
@@ -644,7 +741,11 @@ def _scene_observations(
     }
 
     try:
-        surfaces = [s for s in ("red", "nir", "blue", "green", "swir1", "swir2") if s in assets]
+        surfaces = [
+            surface
+            for surface in _required_surfaces_for_indices(variables)
+            if surface in assets
+        ]
         band_arrays, context = _load_scene_arrays(assets, surfaces, gdal_env, geometry_geojson)
         fmask = context["fmask"]
         shape = context["shape"]
@@ -699,10 +800,18 @@ def _scene_observations(
         cloud_mask = ((fmask_uint8 & FMASK_EXCLUDE_MASK) != 0) | high_aerosol_mask
     except Exception as exc:  # noqa: BLE001 — raster errors can contain signed asset URLs
         reason = type(exc).__name__
+        details: dict[str, Any] = {
+            "scene_id": scene_id,
+            "reason": reason,
+            "failure_code": _safe_gdal_failure_code(exc),
+        }
+        http_status = _safe_http_status_from_exception(exc)
+        if http_status is not None:
+            details["http_status"] = http_status
         raise ProviderUnavailable(
             f"Scene {scene_id} could not be read or validated ({reason}); "
             "verify Earthdata credentials, COG availability, CRS metadata and QA assets.",
-            details=[{"scene_id": scene_id, "reason": reason}],
+            details=[details],
         ) from exc
 
     observations: list[CanonicalObservation] = []

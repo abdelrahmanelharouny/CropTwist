@@ -202,6 +202,34 @@ def _reproject_geometry(geom: Any, *, src_epsg: int, dst_epsg: int) -> Any:
     return shapely_transform(transformer.transform, geom)
 
 
+
+def _rasterio_env_context(rasterio_module: Any, gdal_env: dict[str, Any] | None):
+    """Create a Rasterio GDAL environment, routing AWS credentials via AWSSession.
+
+    Rasterio rejects AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY as GDAL config
+    options. CDSE S3 credentials must be supplied through its boto3-backed
+    AWSSession; only non-secret endpoint/behavior options reach GDAL.
+    """
+    options = dict(gdal_env or {})
+    access_key = options.pop("AWS_ACCESS_KEY_ID", None)
+    secret_key = options.pop("AWS_SECRET_ACCESS_KEY", None)
+    region_name = options.pop("AWS_DEFAULT_REGION", None)
+    endpoint_url = options.get("AWS_S3_ENDPOINT")
+    if access_key or secret_key:
+        if not access_key or not secret_key or not endpoint_url:
+            raise ValueError("complete CDSE S3 credentials and endpoint are required")
+        from rasterio.session import AWSSession
+
+        session = AWSSession(
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name=region_name or "default",
+            endpoint_url=endpoint_url,
+        )
+        return rasterio_module.Env(session=session, **options)
+    return rasterio_module.Env(**options)
+
+
 def read_scene_window(
     *,
     assets: dict[str, str],
@@ -233,7 +261,7 @@ def read_scene_window(
         raise ValueError("no band assets available for the requested surfaces")
 
     geom_ll = _geojson_to_shapely(geometry_geojson)
-    with rasterio.Env(**env):
+    with _rasterio_env_context(rasterio, env):
         with rasterio.open(band_hrefs[0]) as src:
             if src.crs is None:
                 raise ValueError("source scene has no CRS metadata; refusing to guess")

@@ -87,6 +87,50 @@ def make_client(pages, calls=None):
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
+
+
+
+
+def test_nasa_hls_normalizes_raw_and_prefixed_bearer_tokens():
+    normalize = hls_provider_module._normalize_earthdata_bearer_token
+    assert normalize("token-value") == "token-value"
+    assert normalize("Bearer token-value") == "token-value"
+    assert normalize("  BEARER token-value  ") == "token-value"
+    assert normalize("   ") is None
+
+
+
+def test_nasa_hls_extracts_only_numeric_http_status_from_gdal_error():
+    assert hls_provider_module._safe_http_status_from_exception(
+        RuntimeError("HTTP response code: 403 while reading a protected asset")
+    ) == 403
+    assert hls_provider_module._safe_http_status_from_exception(
+        RuntimeError("HTTP status code 429; request failed")
+    ) == 429
+    assert hls_provider_module._safe_http_status_from_exception(
+        RuntimeError("request failed with secret_token_123 and no status")
+    ) is None
+
+
+
+
+
+
+def test_nasa_hls_maps_gdal_errors_to_safe_failure_codes():
+    code = hls_provider_module._safe_gdal_failure_code
+    assert code(RuntimeError("HTTP response code: 401")) == "http_401"
+    assert code(RuntimeError("SSL certificate validation failed")) == "tls_validation_error"
+    assert code(RuntimeError("Could not resolve host")) == "dns_resolution_error"
+    assert code(RuntimeError("unclassified raster issue")) == "raster_read_failed"
+
+
+def test_hls_reads_only_surfaces_required_by_requested_indices():
+    assert hls_provider_module._required_surfaces_for_indices(["ndvi"]) == ["red", "nir"]
+    assert hls_provider_module._required_surfaces_for_indices(["ndmi", "evi"]) == [
+        "red", "nir", "blue", "swir1"
+    ]
+
+
 def test_provider_satisfies_platform_contract():
     provider = NasaHlsProvider()
     assert isinstance(provider, EnvironmentalDataProvider)

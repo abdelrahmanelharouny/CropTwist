@@ -3,7 +3,7 @@
 Corpus format:
 {
   "documents": [{"id": "doc-1", "text": "..."}],
-  "queries": [{"id": "q-1", "text": "...", "relevant_document_ids": ["doc-1"]}]
+  "queries": [{"id": "q-1", "text": "...", "language": "ar-EG", "relevant_document_ids": ["doc-1"]}]
 }
 """
 from __future__ import annotations
@@ -22,10 +22,21 @@ async def _evaluate(path: Path) -> dict:
     provider = embedding_provider_registry.get("local-fastembed-multilingual-e5")
     if provider is None:
         raise RuntimeError("Local embedding provider is not registered; enable its setting and restart the API.")
+    queries = corpus["queries"]
+    if not isinstance(queries, list) or any(
+        not isinstance(query, dict)
+        or not isinstance(query.get("language"), str)
+        or not query["language"].strip()
+        for query in queries
+    ):
+        raise ValueError("every judged query must include a language tag (for example ar-EG or en)")
+    query_languages = {query["id"]: query["language"] for query in queries}
     return await evaluate_embedding_provider(
         provider,
         documents=corpus["documents"],
-        queries=corpus["queries"],
+        queries=queries,
+        query_languages=query_languages,
+        required_language_groups=("ar", "en"),
     )
 
 

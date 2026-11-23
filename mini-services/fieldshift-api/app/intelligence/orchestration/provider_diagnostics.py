@@ -12,7 +12,14 @@ from typing import Any
 
 from app.intelligence.orchestration.provider import ProviderGeneration, provider_registry
 
-PROBE_TIMEOUT_SECONDS = 20
+# Allow the fixed probe to outlive the provider's bounded retry budget.
+# Defaults: 25s/request, one retry, <=2s backoff, plus scheduling margin.
+PROBE_TIMEOUT_SECONDS = 60
+# Reasoning-capable hosted models can spend part of the completion budget on
+# internal reasoning before emitting the exact short probe token. 16 tokens
+# caused false truncation on both configured providers; keep this probe cheap
+# but give the model enough room to terminate normally.
+PROBE_MAX_OUTPUT_TOKENS = 128
 
 _PROBE_MESSAGES = [
     {"role": "system", "content": "You are a connectivity probe. Do not reveal secrets."},
@@ -45,7 +52,7 @@ async def probe_provider(name: str) -> dict[str, Any]:
                 detail = await achat_detail(
                     messages,
                     temperature=0,
-                    max_tokens=16,
+                    max_tokens=PROBE_MAX_OUTPUT_TOKENS,
                     field_sensitive=False,
                 )
                 if not isinstance(detail, dict) or not isinstance(detail.get("content"), str):
@@ -58,13 +65,17 @@ async def probe_provider(name: str) -> dict[str, Any]:
             return await provider.generate(
                 messages,
                 temperature=0,
-                max_tokens=16,
+                max_tokens=PROBE_MAX_OUTPUT_TOKENS,
                 request_id="croptwist-live-provider-probe",
             )
 
         result = await asyncio.wait_for(invoke_probe(), timeout=PROBE_TIMEOUT_SECONDS)
     except Exception as exc:
-        category = getattr(exc, "category", "provider_probe_failed")
+        category = (
+            "provider_timeout"
+            if isinstance(exc, (asyncio.TimeoutError, TimeoutError))
+            else getattr(exc, "category", "provider_probe_failed")
+        )
         # Never echo arbitrary exception attributes: third-party exceptions may
         # accidentally place credentials or response fragments in category.
         safe_categories = {
@@ -90,13 +101,19 @@ async def probe_provider(name: str) -> dict[str, Any]:
             "provider_schema_unsupported_or_invalid",
         }
         safe_category = category if isinstance(category, str) and category in safe_categories else "provider_probe_failed"
-        return {
+        evidence = {
             "provider": provider.name,
             "model": getattr(provider, "model", None),
             "status": "failed",
             "error_category": safe_category[:80],
             "latency_ms": max(0, round((perf_counter() - started) * 1000)),
         }
+        # HTTP status is a bounded diagnostic signal (e.g. 429 vs 503), unlike
+        # response bodies, headers, URLs, or arbitrary exception attributes.
+        http_status = getattr(exc, "http_status", None)
+        if isinstance(http_status, int) and not isinstance(http_status, bool) and 100 <= http_status <= 599:
+            evidence["http_status"] = http_status
+        return evidence
     latency_ms = max(0, round((perf_counter() - started) * 1000))
     if result is None or not isinstance(getattr(result, "content", None), str) or not result.content.strip():
         return {"provider": provider.name, "model": getattr(provider, "model", None), "status": "empty_response", "latency_ms": latency_ms}
