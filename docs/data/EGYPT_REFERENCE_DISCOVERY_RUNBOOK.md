@@ -77,3 +77,6 @@ The corrected workflow successfully parsed both nested Egypt GeoParquet files:
 - quality_score_ct and quality_score_lc are constant 93; they are source curation scores, not per-row probabilities or measured model accuracy.
 
 The full machine profile and downloaded source archives are retained in artifact 14808784478. This QA is not model training or independent validation. Preserve original fields and missingness, map only explicit crop-specific EWOC codes, and split by spatial groups/intersections rather than random rows.
+
+
+The profile artifact also exports the 12 overlap sample-ID pairs and their EWOC codes. Retain both observations because they may represent different seasonal field surveys; group them together for spatial train/validation/test partitioning and investigate differing crop codes against the original field sheets.
