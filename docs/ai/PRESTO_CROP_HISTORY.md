@@ -15,10 +15,11 @@ does not install PyTorch or TorchGeo.
 ## Input contract implemented
 
 The adapter prepares one 12-month sequence per field with the upstream 17
-channels, in order:
+input features in order:
 
 1. Sentinel-1 VV/VH in dB
-2. Sentinel-2 B2/B3/B4/B5/B6/B7/B8/B8A/B11/B12 as scaled integer reflectance DN (not physical 0–1 reflectance)
+2. Sentinel-2 B2/B3/B4/B5/B6/B7/B8/B8A/B11/B12 as scaled integer reflectance DN
+   (not physical 0–1 reflectance)
 3. ERA5 2 m temperature in Kelvin and total precipitation in metres
 4. SRTM elevation in metres and slope in degrees
 5. NDVI derived from B8 and B4
@@ -30,9 +31,19 @@ slope divide by 50. Missing observations are zero-filled only alongside an
 explicit per-channel mask. Dynamic World class 9 means unavailable. SRTM is
 represented as the single static token expected by the encoder.
 
-The input field names carry units (`vv_db`, `b04_dn`, `temperature_2m_k`, `total_precipitation_m`, `elevation_m`, `slope_degrees`) to prevent mixing already-scaled reflectance with raw DN. The field centroid is required and passed as latitude/longitude. Inputs outside
-the 12-month sequence, invalid channel names, inconsistent static SRTM values,
-or records with no usable modality fail closed.
+The input field names carry units (`vv_db`, `b04_dn`, `temperature_2m_k`,
+`total_precipitation_m`, `elevation_m`, `slope_degrees`) to prevent mixing
+already-scaled reflectance with raw DN. The field centroid is required and
+passed as latitude/longitude. Inputs outside the 12-month sequence, invalid
+channel names, inconsistent static SRTM values, or records with no usable
+modality fail closed.
+
+**Scope boundary:** this is an implemented and unit-tested input adapter. It
+does not mean that all upstream datasets are already being fetched and
+aggregated into these monthly fields by production provider pipelines. Provider
+extraction, reprojection/resampling, monthly compositing, QA/cloud masking and
+provenance wiring remain separate integration work and must be verified with
+real source observations before claiming end-to-end Presto readiness.
 
 ## Inference behavior
 
@@ -41,8 +52,14 @@ its LayerNorm as a small inference bundle. The adapter reconstructs the original
 Presto downstream pooling contract: average unnormalized valid tokens, then
 apply the encoder LayerNorm once. TorchGeo's encoder compacts masked tokens and
 requires equal valid-token counts within a tensor batch, so inference buckets
-records by valid-token count before batching. This custom pooling path remains
-subject to a numerical-parity test against the upstream public inference API.
+records by valid-token count before batching.
+
+The token-count helper is covered by unit tests for complete and partially
+missing modality groups. **Numerical parity against the upstream public
+inference API is not yet demonstrated.** The custom pooling path must not be
+treated as scientifically verified until a deterministic parity test compares
+the same real-valued input tensors, masks, month and coordinates against the
+upstream eval-task output within a documented tolerance.
 
 The output is a 128-D representation only. It is not a crop label, probability,
 or confidence score. A crop classifier head is deliberately not shipped until
@@ -51,16 +68,18 @@ independence of labels are verified.
 
 ## Remaining model gates
 
-- Add the complete Sentinel-2 band mapping (B05/B06/B07/B8A/B12) and Sentinel-1 VV/VH
-  ingestion paths, plus SRTM elevation/slope and monthly ERA5 aggregation.
+- Complete provider-backed ingestion for Sentinel-2 bands B05/B06/B07/B8A/B12
+  and Sentinel-1 VV/VH, plus SRTM elevation/slope and monthly ERA5 aggregation.
+  The adapter accepts these named, unit-checked features; upstream extraction
+  and compositing are not thereby complete.
 - Verify FAO Egypt reference label exports, class definitions and license.
 - Train CatBoost/linear heads on Presto embeddings; compare Galileo Nano and
   OlmoEarth features only under identical spatial/temporal holdouts.
 - Evaluate leave-one-area-out (Zankalon / Sidi Ghazi / Mallawi) and temporal
   holdout; report macro-F1, balanced accuracy, per-class metrics, calibration,
   coverage and abstention. No random neighbouring-pixel split.
-- Benchmark CPU latency/memory and export to ONNX only after numerical parity
-  against the upstream PyTorch encoder is demonstrated.
+- Demonstrate numerical parity with upstream PyTorch inference before
+  benchmarking CPU latency/memory or exporting to ONNX.
 
 ## Crop classifier evaluation harness
 
@@ -75,17 +94,19 @@ python scripts/train_crop_history_classifier.py ./egypt-presto-embeddings.csv
 ```
 
 The script uses CatBoost on CPU and evaluates a strict leave-one-region-out
-plus latest-season holdout. It requires explicitly verified label source/license flags, disjoint farm groups, class-complete
-training and calibration partitions, and source/license metadata for every
-label. Temperature scaling is fitted on farm-disjoint out-of-fold logits (GroupKFold by farm), then the final fold model is refit on all outer-training records.
-The report includes macro-F1, balanced accuracy, multiclass Brier score, ECE,
-per-class F1 and abstention coverage/selective accuracy at a fixed 0.60
-confidence threshold.
+plus latest-season holdout. It requires explicitly verified label source/license
+flags, disjoint farm groups, class-complete training and calibration
+partitions, and source/license metadata for every label. Temperature scaling
+is fitted on farm-disjoint out-of-fold logits (GroupKFold by farm), then the
+final fold model is refit on all outer-training records. The report includes
+macro-F1, balanced accuracy, multiclass Brier score, ECE, per-class F1 and
+abstention coverage/selective accuracy at a fixed 0.60 confidence threshold.
 
 The script is an evaluation harness only: it does not save or promote a
 production classifier. A fold blocked for missing classes or insufficient
 independent farms is reported as blocked; it is never replaced by a random
 pixel split.
+
 ## End-to-end embedding export
 
 The export command accepts one validated `CropHistoryRecord` JSON object per
