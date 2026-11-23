@@ -87,3 +87,19 @@ The profile artifact also exports the 12 overlap sample-ID pairs and their EWOC 
 The first manifest run retained 1,532 rows and all raw attributes/geometry WKB, with 878 explicit crop-specific EWOC labels and 654 generic/non-crop rows. Its conservative union-find grouped records by H3 cell, same-collection Field_ID/Block_ID and positive-area polygon intersection. Result: 3 components total, but only 2 crop-bearing components (one with 877 labels and one singleton); one component contains generic-only records. Fifteen positive-area polygon intersections were found across and within the collections.
 
 This is not enough for a spatially independent train/validation/test split. Do not relax the grouping or use random rows. Add independent Egyptian regions/field surveys before supervised classifier evaluation. The manifest is a QA artifact, not a training dataset.
+
+
+## Reproducible live discovery — workflow run 45166943547
+
+The corrected scanner completed successfully and produced artifact **14815335882** (`egypt-reference-discovery-report`). It downloaded all eight Africa archives for 2018–2025 and validated declared byte sizes/checksums. The RDM endpoint request returned HTTP success but the current parser recorded zero collections and zero Egypt hits; do not interpret that as proof that RDM has no public collections until its response schema/pagination is inspected. The Zenodo archive path independently found two nested Egypt collections in the 2019 Africa archive:
+
+| Collection | Parsed rows | Metadata observation date | Declared license |
+|---|---:|---|---|
+| `2019_egy_faowapor1_poly_111` | 898 | 2019-08-05 | `CC_BY` |
+| `2019_egy_faowapor2_poly_111` | 634 | 2019-03-14 to 2019-03-28 | `CC_BY` |
+
+Both metadata sheets name FAO-WaPOR field data Egypt 2019, classify the observation method as `FieldObservationSurvey`, and geometry as `FieldRegisteredPolygon`. Their license-reference URL is blank; sampling design and validation are unknown. Collection 1's metadata says 900 observations but only 898 GeoParquet rows were parsed. Do not silently reconcile this discrepancy.
+
+GeoParquet results: 1,532 parsed valid non-empty WGS84 polygons; 12 positive-area intersections between collections; no exact-equal geometries; 878 crop-specific EWOC rows; 654 generic/non-crop rows; 3 conservative spatial components, of which only 2 contain crop labels (877 labels in one component and a singleton in the other). All source quality scores are 93 and must not be interpreted as model accuracy. Collection 1 has 598 null Field CroType values; collection 2 has 20 missing Field_ID and Block_ID values.
+
+**Decision:** useful historical research candidates with a declared CC_BY metadata value, but not yet training-approved. Obtain the original FAO item license/version and attribution terms; confirm adaptation/derived-label and redistribution rights; investigate the 2-row discrepancy and missing IDs; retain all raw labels/attributes; group the 12 overlapping pairs and all connected spatial records together. This dataset alone cannot support a spatially independent three-region evaluation.
