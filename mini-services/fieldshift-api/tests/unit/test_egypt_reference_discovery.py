@@ -126,6 +126,7 @@ def test_egypt_candidate_manifest_excludes_generic_ewoc_codes() -> None:
     assert not is_crop_specific_ewoc("1100000000")
     assert not is_crop_specific_ewoc("6000000000")
     assert not is_crop_specific_ewoc("7000000000")
+    assert not is_crop_specific_ewoc("9999999999")
 
 
 def test_egypt_candidate_manifest_spatial_group_ids_are_stable() -> None:
