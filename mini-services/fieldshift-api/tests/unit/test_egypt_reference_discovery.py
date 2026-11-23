@@ -4,6 +4,7 @@ from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from scripts.discover_egypt_reference_data import _matching_records, _scan_archive, _scan_xlsx_bytes
+from scripts.build_egypt_candidate_manifest import UnionFind, is_crop_specific_ewoc, stable_group_id
 
 
 def test_rdm_discovery_matches_locality_and_preserves_license_metadata() -> None:
@@ -116,3 +117,27 @@ def test_nested_worldcereal_collection_zip_detects_egypt_and_license(tmp_path) -
     metadata_hit = next(hit for hit in hits if hit.get("source_file", "").endswith("metadata.xlsx"))
     assert "egypt" in metadata_hit["matched_terms"]
     assert any("CC_BY" in cell for cell in metadata_hit["cells"])
+
+
+
+def test_egypt_candidate_manifest_excludes_generic_ewoc_codes() -> None:
+    assert is_crop_specific_ewoc("1101080000")
+    assert not is_crop_specific_ewoc("1000000000")
+    assert not is_crop_specific_ewoc("1100000000")
+    assert not is_crop_specific_ewoc("6000000000")
+    assert not is_crop_specific_ewoc("7000000000")
+
+
+def test_egypt_candidate_manifest_spatial_group_ids_are_stable() -> None:
+    assert stable_group_id(["sample-b", "sample-a"]) == stable_group_id(["sample-a", "sample-b"])
+
+
+def test_union_find_merges_connected_spatial_records() -> None:
+    groups = UnionFind(5)
+    groups.union(0, 1)
+    groups.union(1, 3)
+    groups.union(2, 4)
+
+    assert groups.find(0) == groups.find(3)
+    assert groups.find(2) == groups.find(4)
+    assert groups.find(0) != groups.find(2)
