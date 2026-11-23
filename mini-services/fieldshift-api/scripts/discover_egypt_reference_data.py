@@ -163,7 +163,7 @@ def _download_file(client: httpx.Client, file_info: dict[str, Any], output_dir: 
         raise ValueError("refusing unexpected Zenodo archive URL")
     if size <= 0 or size > max_bytes:
         raise ValueError(f"archive size is outside configured bound: {key} ({size} bytes)")
-    response = client.get(url, headers={"Accept": "application/octet-stream"})
+    response = client.get(url, headers={"Accept": "*/*"})
     response.raise_for_status()
     if len(response.content) != size:
         raise ValueError(f"download size mismatch for {key}")
@@ -192,7 +192,7 @@ def discover(*, download_archives: bool, output_dir: Path, max_archive_mb: int) 
         try:
             rdm = _request_json(client, RDM_COLLECTIONS_URL)
             report["rdm"]["matches"] = _matching_records(rdm)
-            report["rdm"]["collection_count"] = len(rdm) if isinstance(rdm, list) else None
+            report["rdm"]["collection_count"] = len(rdm) if isinstance(rdm, list) else len(rdm.get("features", rdm.get("collections", []))) if isinstance(rdm, dict) else None
         except Exception as exc:  # noqa: BLE001
             report["rdm"]["error"] = f"{type(exc).__name__}: {exc}"
         try:
@@ -223,7 +223,7 @@ def discover(*, download_archives: bool, output_dir: Path, max_archive_mb: int) 
                         })
         except Exception as exc:  # noqa: BLE001
             report["zenodo"]["error"] = f"{type(exc).__name__}: {exc}"
-    report["status"] = "completed" if report["rdm"]["error"] is None and report["zenodo"]["error"] is None else "partial_failure"
+    report["status"] = "completed" if report["rdm"]["error"] is None and report["zenodo"]["error"] is None and all("error" not in scan for scan in report["zenodo"]["scans"]) else "partial_failure"
     return report
 
 
@@ -255,7 +255,7 @@ def main() -> int:
         "output": str(args.output),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0 if report["status"] == "completed" else (0 if report["rdm"]["error"] is None or report["zenodo"]["error"] is None else 2)
+    return 0 if report["status"] == "completed" else 2
 
 
 if __name__ == "__main__":
