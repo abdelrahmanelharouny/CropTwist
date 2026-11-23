@@ -34,7 +34,7 @@ def _counts(values: list[Any], limit: int = 100) -> dict[str, Any]:
     }
 
 
-def _profile_geoparquet(data: bytes, collection_id: str, member_name: str) -> tuple[dict[str, Any], list[Any]]:
+def _profile_geoparquet(data: bytes, collection_id: str, member_name: str) -> tuple[dict[str, Any], list[Any], list[Any], list[Any]]:
     table = pq.read_table(io.BytesIO(data))
     schema_metadata = table.schema.metadata or {}
     raw_geo = schema_metadata.get(b"geo")
@@ -116,7 +116,9 @@ def _profile_geoparquet(data: bytes, collection_id: str, member_name: str) -> tu
             for name, vals in attributes.items()
         },
     }
-    return profile, geometries
+    sample_ids = values.get("sampleID") or values.get("sample_id") or [None] * table.num_rows
+    ewoc_codes = values.get("ewoc_code") or values.get("CT") or [None] * table.num_rows
+    return profile, geometries, sample_ids, ewoc_codes
 
 
 def inspect_archives(archives_dir: Path) -> dict[str, Any]:
@@ -128,6 +130,8 @@ def inspect_archives(archives_dir: Path) -> dict[str, Any]:
         "errors": [],
     }
     geometries_by_collection: dict[str, list[Any]] = {}
+    sample_ids_by_collection: dict[str, list[Any]] = {}
+    labels_by_collection: dict[str, list[Any]] = {}
     for archive_path in sorted(archives_dir.glob("WorldCereal_ReferenceData_*_Africa_*.zip")):
         try:
             with zipfile.ZipFile(archive_path) as outer:
@@ -141,13 +145,15 @@ def inspect_archives(archives_dir: Path) -> dict[str, Any]:
                             if not info.is_dir() and info.filename.lower().endswith(".geoparquet")
                         ]
                         for info in geoparquet_members:
-                            profile, geometries = _profile_geoparquet(
+                            profile, geometries, sample_ids, ewoc_codes = _profile_geoparquet(
                                 collection.read(info),
                                 nested_name.removesuffix(".zip"),
                                 f"{archive_path.name}!/{nested_name}!/{info.filename}",
                             )
                             report["collections"].append(profile)
                             geometries_by_collection[profile["collection_id"]] = geometries
+                            sample_ids_by_collection[profile["collection_id"]] = sample_ids
+                            labels_by_collection[profile["collection_id"]] = ewoc_codes
         except Exception as exc:
             report["errors"].append({
                 "archive": archive_path.name,
@@ -162,18 +168,27 @@ def inspect_archives(archives_dir: Path) -> dict[str, Any]:
         pairs = second_tree.query(first_geometries, predicate="intersects")
         positive_area = 0
         exact_equal = 0
+        overlap_pairs = []
         for first_index, second_index in zip(pairs[0].tolist(), pairs[1].tolist()):
             intersection = shapely.intersection(first_geometries[first_index], second_geometries[second_index])
             if not shapely.is_empty(intersection) and float(shapely.area(intersection)) > 0:
                 positive_area += 1
             if bool(shapely.equals(first_geometries[first_index], second_geometries[second_index])):
                 exact_equal += 1
+            overlap_pairs.append({
+                "sample_id_a": _display(sample_ids_by_collection[first_id][first_index]),
+                "sample_id_b": _display(sample_ids_by_collection[second_id][second_index]),
+                "ewoc_code_a": _display(labels_by_collection[first_id][first_index]),
+                "ewoc_code_b": _display(labels_by_collection[second_id][second_index]),
+                "positive_area_intersection": not shapely.is_empty(intersection) and float(shapely.area(intersection)) > 0,
+            })
         report["cross_collection_spatial_overlap"].append({
             "collection_a": first_id,
             "collection_b": second_id,
             "intersecting_polygon_pairs": int(len(pairs[0])),
             "positive_area_intersection_pairs": positive_area,
             "exact_equal_geometry_pairs": exact_equal,
+            "overlap_pairs": overlap_pairs,
             "note": "Intersection counts are used for leakage review; area is not interpreted in degrees squared.",
         })
     report["status"] = "completed" if report["collections"] and not report["errors"] else "partial_failure"
