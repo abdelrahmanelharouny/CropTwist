@@ -15,6 +15,11 @@ from app.intelligence.orchestration.provider import ProviderGeneration, provider
 # Allow the fixed probe to outlive the provider's bounded retry budget.
 # Defaults: 25s/request, one retry, <=2s backoff, plus scheduling margin.
 PROBE_TIMEOUT_SECONDS = 60
+# Reasoning-capable hosted models can spend part of the completion budget on
+# internal reasoning before emitting the exact short probe token. 16 tokens
+# caused false truncation on both configured providers; keep this probe cheap
+# but give the model enough room to terminate normally.
+PROBE_MAX_OUTPUT_TOKENS = 128
 
 _PROBE_MESSAGES = [
     {"role": "system", "content": "You are a connectivity probe. Do not reveal secrets."},
@@ -47,7 +52,7 @@ async def probe_provider(name: str) -> dict[str, Any]:
                 detail = await achat_detail(
                     messages,
                     temperature=0,
-                    max_tokens=16,
+                    max_tokens=PROBE_MAX_OUTPUT_TOKENS,
                     field_sensitive=False,
                 )
                 if not isinstance(detail, dict) or not isinstance(detail.get("content"), str):
@@ -60,7 +65,7 @@ async def probe_provider(name: str) -> dict[str, Any]:
             return await provider.generate(
                 messages,
                 temperature=0,
-                max_tokens=16,
+                max_tokens=PROBE_MAX_OUTPUT_TOKENS,
                 request_id="croptwist-live-provider-probe",
             )
 
