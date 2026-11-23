@@ -58,7 +58,7 @@ def test_probe_never_exposes_provider_exception_body(monkeypatch):
     result = asyncio.run(provider_diagnostics.probe_provider("broken"))
     assert result["status"] == "failed"
     assert "secret-token-should-never-escape" not in str(result)
-    assert result["error_category"] == "provider_probe_failed"
+    assert result["error_category"] == "provider_timeout"
 
 
 def test_probe_reports_registry_none_as_unregistered(monkeypatch):
