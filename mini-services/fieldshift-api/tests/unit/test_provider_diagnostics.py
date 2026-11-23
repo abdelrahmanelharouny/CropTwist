@@ -181,3 +181,11 @@ def test_legacy_bridge_probe_marks_only_fixed_synthetic_prompt_non_sensitive(mon
     assert result["status"] == "live_verified"
     assert captured["kwargs"]["field_sensitive"] is False
     assert captured["messages"][-1]["content"] == "Reply with exactly CROPTWIST_PROVIDER_OK."
+
+
+def test_default_provider_chain_matches_current_project_decision():
+    from app.intelligence.config import AISettings
+
+    settings = AISettings(_env_file=None)
+    assert settings.provider_order == ("openrouter", "groq")
+    assert settings.ollama_enabled is False
