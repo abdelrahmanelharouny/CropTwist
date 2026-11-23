@@ -80,3 +80,10 @@ The full machine profile and downloaded source archives are retained in artifact
 
 
 The profile artifact also exports the 12 overlap sample-ID pairs and their EWOC codes. Retain both observations because they may represent different seasonal field surveys; group them together for spatial train/validation/test partitioning and investigate differing crop codes against the original field sheets.
+
+
+## Candidate manifest result
+
+The first manifest run retained 1,532 rows and all raw attributes/geometry WKB, with 878 explicit crop-specific EWOC labels and 654 generic/non-crop rows. Its conservative union-find grouped records by H3 cell, same-collection Field_ID/Block_ID and positive-area polygon intersection. Result: 3 components total, but only 2 crop-bearing components (one with 877 labels and one singleton); one component contains generic-only records. Fifteen positive-area polygon intersections were found across and within the collections.
+
+This is not enough for a spatially independent train/validation/test split. Do not relax the grouping or use random rows. Add independent Egyptian regions/field surveys before supervised classifier evaluation. The manifest is a QA artifact, not a training dataset.
