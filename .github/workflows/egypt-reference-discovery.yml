@@ -29,17 +29,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install discovery dependency
-        run: python -m pip install --disable-pip-version-check httpx==0.28.1
+      - name: Install discovery and GeoParquet profiling dependencies
+        run: python -m pip install --disable-pip-version-check httpx==0.28.1 pyarrow==18.1.0 shapely==2.1.2
       - name: Discover Egypt-relevant RDM collections and Africa archive metadata
         working-directory: mini-services/fieldshift-api
         env:
           DOWNLOAD_ARCHIVES: ${{ github.event_name == 'workflow_dispatch' && inputs.download_archives || 'true' }}
         run: |
           if [ "$DOWNLOAD_ARCHIVES" = "true" ]; then
-            python scripts/discover_egypt_reference_data.py --download-africa-archives --output egypt-reference-discovery.json
+            python scripts/discover_egypt_reference_data.py --download-africa-archives --output-dir egypt-reference-archives --output egypt-reference-discovery.json
+            python scripts/inspect_egypt_geoparquet.py --archives-dir egypt-reference-archives --output egypt-geoparquet-profile.json
           else
-            python scripts/discover_egypt_reference_data.py --output egypt-reference-discovery.json
+            python scripts/discover_egypt_reference_data.py --output-dir egypt-reference-archives --output egypt-reference-discovery.json
           fi
       - name: Upload discovery evidence
         if: always()
@@ -48,6 +49,7 @@ jobs:
           name: egypt-reference-discovery-report
           path: |
             mini-services/fieldshift-api/egypt-reference-discovery.json
-            mini-services/fieldshift-api/.cache/egypt-reference-discovery/
+            mini-services/fieldshift-api/egypt-reference-archives/
+            mini-services/fieldshift-api/egypt-geoparquet-profile.json
           if-no-files-found: warn
           retention-days: 30
