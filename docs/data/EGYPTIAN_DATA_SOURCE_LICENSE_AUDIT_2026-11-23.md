@@ -159,10 +159,32 @@ Corrected nested-archive workflow [45158997515](https://github.com/abdelrahmanel
 
 *For this profile, generic/non-crop EWOC codes 1000000000, 1100000000, 6000000000 and 7000000000 are excluded from the crop-specific count. This is a QA rule for the candidate manifest, not a final label taxonomy.
 
-Across both files: **1,532 actual rows**, all geometries parse and validate, no empty geometries, and no exact duplicate geometries across the collections. The spatial index found **12 cross-collection polygon pairs with positive-area intersections**. Those intersecting pairs must be assigned to the same spatial split group or reviewed/deduplicated; a random row split is prohibited.
+Across both files: **1,532 actual rows**, all geometries parse and validate, no empty geometries, and no exact duplicate geometries across the collections. The spatial index found **12 cross-collection polygon pairs with positive-area intersections**. Those intersecting pairs must be assigned to the same spatial split group; do not deduplicate automatically because the March and August surveys may represent different crop seasons on the same land. A random row split is prohibited.
 
 The crop-specific EWOC code distribution is highly imbalanced. Collection 1 is dominated by rice (206) and maize (57); collection 2 by wheat (270), permanent leguminous crops (144), onions (47), oranges (37) and potatoes (26), with many classes having fewer than 10 examples. Do not claim a balanced 23-class training set or publish an accuracy metric from a random split.
 
 The source's quality_score_ct and quality_score_lc are constant at 93 for every row in both files. Treat 93 as a source/curation score, **not** a per-observation probability or independently measured model accuracy. In collection 2, Field_ID has 20 non-null distinct IDs and 20 missing rows; Block_ID has 82 non-null distinct IDs and 20 missing rows. In collection 1, sampleID is unique per polygon but is not evidence of independent farms; H3 grouping fields cover only 2 coarse cells and 6 finer cells. Use spatial blocks/geometry intersections as the split unit, not sampleID.
 
 **Decision:** candidate for a controlled research ingestion and representation-learning/evaluation spike after source-rights confirmation. It is not yet training-approved. Preserve original CT, LC, CroType, ewoc_code, validityTi, valid_time, sampleID, Field_ID, Block_ID, and null flags in the immutable raw layer. Build an explicit label mapping that excludes generic classes, then create spatially grouped splits and compare against the separate 2023–2024 FAO Egypt reference source.
+
+
+### Cross-collection overlap pair manifest
+
+The profile artifact reports these 12 intersecting sample pairs. Keep each pair in the same spatial group; retain both records pending temporal/field-level review:
+
+| Collection 1 sample | EWOC | Collection 2 sample | EWOC |
+|---|---:|---|---:|
+| 2019_EG_WAPOR_1_POLY_11160 | 1108000010 | 2019_EG_WAPOR_2_POLY_111129 | 1107000031 |
+| 2019_EG_WAPOR_1_POLY_11186 | 1101080000 | 2019_EG_WAPOR_2_POLY_111253 | 1101010000 |
+| 2019_EG_WAPOR_1_POLY_11187 | 1101080000 | 2019_EG_WAPOR_2_POLY_111253 | 1101010000 |
+| 2019_EG_WAPOR_1_POLY_11189 | 1108000010 | 2019_EG_WAPOR_2_POLY_111254 | 1105010020 |
+| 2019_EG_WAPOR_1_POLY_11192 | 1108000010 | 2019_EG_WAPOR_2_POLY_111255 | 1103010010 |
+| 2019_EG_WAPOR_1_POLY_11194 | 1000000000 | 2019_EG_WAPOR_2_POLY_111252 | 1201000010 |
+| 2019_EG_WAPOR_1_POLY_111103 | 1101080000 | 2019_EG_WAPOR_2_POLY_111256 | 1101010000 |
+| 2019_EG_WAPOR_1_POLY_111641 | 1000000000 | 2019_EG_WAPOR_2_POLY_11142 | 1101010000 |
+| 2019_EG_WAPOR_1_POLY_111641 | 1000000000 | 2019_EG_WAPOR_2_POLY_11143 | 1204000000 |
+| 2019_EG_WAPOR_1_POLY_111643 | 1000000000 | 2019_EG_WAPOR_2_POLY_11144 | 1101010000 |
+| 2019_EG_WAPOR_1_POLY_111683 | 1000000000 | 2019_EG_WAPOR_2_POLY_111526 | 1201030040 |
+| 2019_EG_WAPOR_1_POLY_111684 | 1000000000 | 2019_EG_WAPOR_2_POLY_111527 | 1201030040 |
+
+The overlapping pairs include differing crop codes (for example rice/wheat, cotton/peas and cotton/tomato). Treat these as possible temporal/field-label conflicts or crop-rotation evidence, not as duplicates to delete without provenance review.
