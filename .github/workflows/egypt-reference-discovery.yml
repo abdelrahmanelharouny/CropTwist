@@ -6,6 +6,7 @@ on:
     paths:
       - "mini-services/fieldshift-api/scripts/discover_egypt_reference_data.py"
       - "mini-services/fieldshift-api/scripts/inspect_egypt_geoparquet.py"
+      - "mini-services/fieldshift-api/scripts/build_egypt_candidate_manifest.py"
       - "mini-services/fieldshift-api/tests/unit/test_egypt_reference_discovery.py"
       - "docs/data/EGYPT_REFERENCE_DISCOVERY_RUNBOOK.md"
       - "docs/data/EGYPTIAN_DATA_SOURCE_LICENSE_AUDIT_2026-11-23.md"
@@ -40,6 +41,7 @@ jobs:
           if [ "$DOWNLOAD_ARCHIVES" = "true" ]; then
             python scripts/discover_egypt_reference_data.py --download-africa-archives --output-dir egypt-reference-archives --output egypt-reference-discovery.json
             python scripts/inspect_egypt_geoparquet.py --archives-dir egypt-reference-archives --output egypt-geoparquet-profile.json
+            python scripts/build_egypt_candidate_manifest.py --archives-dir egypt-reference-archives --output egypt-candidate-manifest.json
           else
             python scripts/discover_egypt_reference_data.py --output-dir egypt-reference-archives --output egypt-reference-discovery.json
           fi
@@ -52,5 +54,6 @@ jobs:
             mini-services/fieldshift-api/egypt-reference-discovery.json
             mini-services/fieldshift-api/egypt-reference-archives/
             mini-services/fieldshift-api/egypt-geoparquet-profile.json
+            mini-services/fieldshift-api/egypt-candidate-manifest.json
           if-no-files-found: warn
           retention-days: 30
