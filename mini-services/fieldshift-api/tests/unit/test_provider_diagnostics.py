@@ -241,7 +241,7 @@ def test_default_provider_chain_excludes_unused_ollama():
     from app.intelligence.config import ai_settings
 
     assert ai_settings.ollama_enabled is False
-    assert ai_settings.provider_order == ("gemini", "groq", "openrouter")
+    assert ai_settings.provider_order == ("openrouter", "groq")
 
 
 
