@@ -188,3 +188,12 @@ The profile artifact reports these 12 intersecting sample pairs. Keep each pair 
 | 2019_EG_WAPOR_1_POLY_111684 | 1000000000 | 2019_EG_WAPOR_2_POLY_111527 | 1201030040 |
 
 The overlapping pairs include differing crop codes (for example rice/wheat, cotton/peas and cotton/tomato). Treat these as possible temporal/field-label conflicts or crop-rotation evidence, not as duplicates to delete without provenance review.
+
+
+## Candidate manifest / strict spatial grouping
+
+The first leakage-aware candidate manifest (artifact 14810168938 from workflow run 45160332144) retained all 1,532 raw records and geometries, assigned crop labels only for the 23 explicitly reviewed crop-specific EWOC codes, and left label-license verification false. It found 878 crop-specific rows, 654 generic/non-crop rows, and no unmapped EWOC codes.
+
+The conservative grouping joined records sharing H3 best-resolution cells, same-collection Field_ID/Block_ID, or positive-area polygon intersections. It produced **3 connected components**, but only **2 contain crop-specific labels**: one component contains 877 crop-specific records, one contains a single crop-specific record, and the third is generic-only. It also found **15 positive-area intersection pairs overall** (12 cross-collection pairs plus 3 within-collection pairs).
+
+**Interpretation:** this is not a usable train/validation/test split. The connected spatial evidence is too concentrated, and the data cover one broad survey area. Do not loosen the grouping or randomize rows to manufacture a split. Additional independent Egyptian regions/field surveys are required. The candidate manifest is a provenance and leakage-audit artifact only.
