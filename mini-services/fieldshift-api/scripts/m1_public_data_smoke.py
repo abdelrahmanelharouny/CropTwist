@@ -150,7 +150,6 @@ def main() -> int:
         "secrets_used": bool(
             settings.earthdata_bearer_token
             or (settings.cdse_s3_access_key and settings.cdse_s3_secret_key)
-            or ai_settings.gemini_api_key.get_secret_value()
             or ai_settings.groq_api_key.get_secret_value()
             or ai_settings.openrouter_api_key.get_secret_value()
         ),
