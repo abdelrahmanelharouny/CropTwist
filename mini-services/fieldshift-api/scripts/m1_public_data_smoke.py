@@ -182,47 +182,66 @@ def main() -> int:
         if not scenes:
             failures.append("NASA HLS public metadata discovery returned no scenes")
         if settings.earthdata_bearer_token and scenes:
-            try:
-                best_scene = min(
-                    scenes,
-                    key=lambda scene: scene.cloud_cover_pct if scene.cloud_cover_pct is not None else 101.0,
-                )
-                scene_record = _record_to_scene_record(best_scene)
-                evidence["nasa_hls"]["asset_http_probes"] = {
+            # A single public catalogue scene can have a damaged/unreadable
+            # asset even when the token and COG endpoint are healthy. Try at
+            # most three clearest scenes, retaining per-scene sanitized evidence.
+            candidates = sorted(
+                scenes,
+                key=lambda scene: scene.cloud_cover_pct if scene.cloud_cover_pct is not None else 101.0,
+            )[:3]
+            attempts: list[dict[str, object]] = []
+            accepted = False
+            for candidate in candidates:
+                attempt: dict[str, object] = {"scene_id": candidate.scene_id}
+                attempt["asset_http_probes"] = {
                     surface: _probe_nasa_asset_http(
-                        best_scene.asset_refs.get(surface),
+                        candidate.asset_refs.get(surface),
                         settings.earthdata_bearer_token,
                     )
                     for surface in ("red", "nir", "fmask")
                 }
-                acquired = best_scene.acquired_at
-                result = NasaHlsProvider().fetch_observations(
-                    area_of_interest=AreaOfInterest(geometry_geojson=AOI),
-                    variables=["ndvi"],
-                    start=acquired - timedelta(seconds=1),
-                    end=acquired + timedelta(seconds=1),
-                    options={
-                        "scene_ids": [best_scene.scene_id],
-                        "scene_records": {best_scene.scene_id: scene_record},
-                    },
-                )
-                evidence["nasa_hls"]["protected_asset_read"] = {
-                    "status": "asset_window_verified" if result.observations else "no_valid_observations",
-                    "scene_id": best_scene.scene_id,
-                    "observation_count": len(result.observations),
-                    "warning_count": len(result.warnings),
-                    "warning_reason_codes": _safe_warning_reason_codes(result.warnings),
-                    "warning_http_statuses": _safe_warning_http_statuses(result.warnings),
-                    "coverage": result.coverage,
-                }
-                if not result.observations:
-                    failures.append("NASA HLS protected asset read returned no valid observations")
-            except Exception as exc:
+                try:
+                    scene_record = _record_to_scene_record(candidate)
+                    acquired = candidate.acquired_at
+                    result = NasaHlsProvider().fetch_observations(
+                        area_of_interest=AreaOfInterest(geometry_geojson=AOI),
+                        variables=["ndvi"],
+                        start=acquired - timedelta(seconds=1),
+                        end=acquired + timedelta(seconds=1),
+                        options={
+                            "scene_ids": [candidate.scene_id],
+                            "scene_records": {candidate.scene_id: scene_record},
+                        },
+                    )
+                    attempt.update({
+                        "status": "asset_window_verified" if result.observations else "no_valid_observations",
+                        "observation_count": len(result.observations),
+                        "warning_count": len(result.warnings),
+                        "warning_reason_codes": _safe_warning_reason_codes(result.warnings),
+                        "warning_http_statuses": _safe_warning_http_statuses(result.warnings),
+                        "coverage": result.coverage,
+                    })
+                    attempts.append(attempt)
+                    if result.observations:
+                        accepted = True
+                        evidence["nasa_hls"]["protected_asset_read"] = {
+                            "status": "asset_window_verified",
+                            "selected_scene_id": candidate.scene_id,
+                            "attempt_count": len(attempts),
+                            "attempts": attempts,
+                            "observation_count": len(result.observations),
+                        }
+                        break
+                except Exception as exc:
+                    attempt.update({"status": "failed", **_safe_provider_failure(exc)})
+                    attempts.append(attempt)
+            if not accepted:
                 evidence["nasa_hls"]["protected_asset_read"] = {
                     "status": "failed",
-                    **_safe_provider_failure(exc),
+                    "attempt_count": len(attempts),
+                    "attempts": attempts,
                 }
-                failures.append("NASA HLS protected asset-window read failed")
+                failures.append("NASA HLS protected asset-window read failed for all bounded candidate scenes")
         else:
             evidence["nasa_hls"]["protected_asset_read"] = "blocked_missing_earthdata_bearer_token"
     except Exception as exc:
