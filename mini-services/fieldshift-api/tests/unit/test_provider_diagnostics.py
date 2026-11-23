@@ -11,6 +11,8 @@ class _FakeProvider:
     async def generate(self, messages, **kwargs):
         assert messages[-1]["content"] == "Reply with exactly CROPTWIST_PROVIDER_OK."
         assert kwargs["request_id"] == "croptwist-live-provider-probe"
+        assert kwargs["max_tokens"] == provider_diagnostics.PROBE_MAX_OUTPUT_TOKENS
+        assert kwargs["max_tokens"] >= 128
         class Result:
             content = "CROPTWIST_PROVIDER_OK"
             model = "fake-model"
