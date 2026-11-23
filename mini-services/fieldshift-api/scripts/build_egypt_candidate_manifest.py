@@ -17,6 +17,13 @@ from typing import Any
 
 
 GENERIC_EWOC_CODES = frozenset({"1000000000", "1100000000", "6000000000", "7000000000"})
+KNOWN_CROP_SPECIFIC_EWOC_CODES = frozenset({
+    "1101080000", "1101060000", "1105010050", "1108000010", "2001000000",
+    "1103000000", "1106000010", "1101010000", "1204000000", "1103110070",
+    "1201030040", "1107000010", "1103010020", "1103090040", "1107000031",
+    "1108020000", "1201000010", "1103020040", "1105010020", "1201010170",
+    "1103010010", "1103060000", "1105010010",
+})
 
 
 class UnionFind:
@@ -43,7 +50,7 @@ class UnionFind:
 
 def is_crop_specific_ewoc(value: Any) -> bool:
     code = str(value).strip() if value is not None else ""
-    return bool(code) and code not in GENERIC_EWOC_CODES
+    return code in KNOWN_CROP_SPECIFIC_EWOC_CODES
 
 
 def stable_group_id(sample_ids: list[str]) -> str:
@@ -98,7 +105,7 @@ def build_manifest(archives_dir: Path) -> dict[str, Any]:
                                 "sample_id": sample_id,
                                 "ewoc_code": ewoc,
                                 "crop_specific": is_crop_specific_ewoc(ewoc),
-                                "label_status": "candidate" if is_crop_specific_ewoc(ewoc) else "excluded_generic",
+                                "label_status": "candidate" if is_crop_specific_ewoc(ewoc) else ("excluded_generic" if ewoc in GENERIC_EWOC_CODES else "unmapped"),
                                 "label_source": "curated_reference",
                                 "label_license": "CC_BY",
                                 "label_license_verified": False,
@@ -162,6 +169,7 @@ def build_manifest(archives_dir: Path) -> dict[str, Any]:
             rows[index]["spatial_group_reasons"] = reasons or ["single_record_no_shared_key_detected"]
 
     class_counts = Counter(row["ewoc_code"] for row in rows if row["crop_specific"])
+    unmapped_rows = sum(row["label_status"] == "unmapped" for row in rows)
     group_class_counts: dict[str, Counter[str]] = defaultdict(Counter)
     for row in rows:
         if row["crop_specific"]:
@@ -172,7 +180,8 @@ def build_manifest(archives_dir: Path) -> dict[str, Any]:
         "source": "WorldCereal 2019 Africa archive; nested FAO-WaPOR Egypt field collections",
         "total_rows": len(rows),
         "crop_specific_rows": sum(row["crop_specific"] for row in rows),
-        "generic_or_non_crop_rows": sum(not row["crop_specific"] for row in rows),
+        "generic_or_non_crop_rows": sum(row["label_status"] == "excluded_generic" for row in rows),
+        "unmapped_ewoc_rows": unmapped_rows,
         "spatial_group_count": len(components),
         "positive_area_intersection_pairs": spatial_pairs,
         "crop_class_counts": dict(sorted(class_counts.items())),
@@ -205,6 +214,7 @@ def main() -> int:
         "total_rows": report["total_rows"],
         "crop_specific_rows": report["crop_specific_rows"],
         "generic_or_non_crop_rows": report["generic_or_non_crop_rows"],
+        "unmapped_ewoc_rows": report["unmapped_ewoc_rows"],
         "spatial_group_count": report["spatial_group_count"],
         "positive_area_intersection_pairs": report["positive_area_intersection_pairs"],
         "training_ready": report["training_ready"],
