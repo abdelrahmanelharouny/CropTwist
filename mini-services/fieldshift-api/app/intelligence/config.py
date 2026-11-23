@@ -92,11 +92,17 @@ class AISettings(BaseSettings):
     @field_validator("llm_provider_order")
     @classmethod
     def validate_provider_order(cls, value: str) -> str:
-        allowed = {"ollama", "gemini", "groq", "openrouter", "legacy-llm-bridge"}
+        # Release decision (2026-11-23): freeze the production chain. Do not
+        # let an environment override silently reintroduce Gemini, Ollama, or
+        # the legacy bridge and trigger another provider-switching cycle.
+        # Change this only through an explicit, reviewed architecture decision.
         names = [part.strip().lower() for part in value.split(",") if part.strip()]
-        if not names or len(names) != len(set(names)) or any(name not in allowed for name in names):
-            raise ValueError("llm_provider_order must be a unique comma-separated list of registered providers")
-        return ",".join(names)
+        if names != ["openrouter", "groq"]:
+            raise ValueError(
+                "llm_provider_order is release-locked to 'openrouter,groq'; "
+                "Gemini and Ollama are not active providers"
+            )
+        return "openrouter,groq"
 
     @field_validator("ollama_base_url")
     @classmethod
