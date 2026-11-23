@@ -41,7 +41,7 @@ It does not upload data, redistribute data, mark labels verified, or train a mod
 
 ## FAO rights boundary
 
-FAO's general website terms permit reuse for private study, research, teaching and non-commercial products/services with attribution; translation, adaptation, resale and other commercial reuse require a permission request. FAO statistical-database terms separately impose restrictions against use to promote a commercial enterprise, even where CC BY 4.0 is the default license. Third-party data may carry different terms. Therefore, the FAO Egypt map is **not approved for CropTwist commercial training or redistribution** until the exact linked item metadata and data-owner terms are obtained and any necessary written permission is archived.
+CropTwist is a **non-commercial research model**. FAO's general website terms describe reuse for private study, research, teaching and non-commercial products/services with attribution; adaptation, translation, resale and commercial reuse may require permission. FAO statistical-database terms are separate, and third-party content may carry different terms. Therefore, do not exclude the FAO Egypt map merely because commercial reuse is restricted. Treat it as a **research candidate pending item-level review**: obtain the exact linked asset metadata and class legend, identify the data holder and third-party rights, and separately confirm research use, adaptation/derived-label permissions, attribution and redistribution limits. Do not assume the general FAO website terms automatically license the downloadable map.
 
 References:
 - https://www.fao.org/contact-us/terms/
