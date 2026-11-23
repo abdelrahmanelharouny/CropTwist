@@ -1789,18 +1789,12 @@ def _build_kwargs(settings: AISettings) -> dict[str, Any]:
 
 
 def register_default_providers(registry: ProviderRegistry) -> None:
+    """Register only the frozen release chain: OpenRouter, then Groq."""
     settings = ai_settings
     common = _build_kwargs(settings)
-    registry.register(OllamaProvider(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        num_ctx=settings.ollama_num_ctx,
-        keep_alive=settings.ollama_keep_alive,
-        **common,
-    ))
-    registry.register(GeminiProvider(
-        api_key=_secret_value(settings.gemini_api_key),
-        model=settings.gemini_model,
+    registry.register(OpenRouterProvider(
+        api_key=_secret_value(settings.openrouter_api_key),
+        model=settings.openrouter_model,
         **common,
     ))
     registry.register(GroqProvider(
@@ -1808,12 +1802,6 @@ def register_default_providers(registry: ProviderRegistry) -> None:
         model=settings.groq_model,
         **common,
     ))
-    registry.register(OpenRouterProvider(
-        api_key=_secret_value(settings.openrouter_api_key),
-        model=settings.openrouter_model,
-        **common,
-    ))
-
 
 def _allowed_for_sensitive_data(name: str) -> bool:
     if name == "ollama":
