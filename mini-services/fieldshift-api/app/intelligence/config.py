@@ -53,7 +53,9 @@ class AISettings(BaseSettings):
     ollama_model: str = "qwen3:4b-instruct-2507-q4_K_M"
     ollama_num_ctx: int = Field(default=8192, ge=2048, le=16384)
     ollama_keep_alive: str = Field(default="5m", min_length=1, max_length=16)
-    llm_provider_order: str = "openrouter,groq,gemini"
+    # Gemini is the configured primary. Groq and OpenRouter are ordered
+    # fallbacks; Ollama is intentionally disabled and excluded from the chain.
+    llm_provider_order: str = "gemini,groq,openrouter"
 
     ai_provider_timeout_seconds: float = Field(default=25.0, gt=0, le=120)
     ai_provider_connect_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
