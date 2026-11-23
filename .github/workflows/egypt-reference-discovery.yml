@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "mini-services/fieldshift-api/scripts/discover_egypt_reference_data.py"
+      - "mini-services/fieldshift-api/scripts/inspect_egypt_geoparquet.py"
       - "mini-services/fieldshift-api/tests/unit/test_egypt_reference_discovery.py"
       - "docs/data/EGYPT_REFERENCE_DISCOVERY_RUNBOOK.md"
       - "docs/data/EGYPTIAN_DATA_SOURCE_LICENSE_AUDIT_2026-11-23.md"
