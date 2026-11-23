@@ -389,16 +389,12 @@ def main() -> int:
         if key.get_secret_value()
     ]
     if configured_llm_providers:
-        try:
-            llm_results = asyncio.run(
-                asyncio.gather(*(probe_provider(name) for name in configured_llm_providers))
+        async def _probe_configured_llm_providers():
+            return await asyncio.gather(
+                *(probe_provider(name) for name in configured_llm_providers)
             )
-        except RuntimeError:
-            async def _probe_configured_llm_providers():
-                return await asyncio.gather(
-                    *(probe_provider(name) for name in configured_llm_providers)
-                )
-            llm_results = asyncio.run(_probe_configured_llm_providers())
+
+        llm_results = asyncio.run(_probe_configured_llm_providers())
         evidence["llm_provider_probes"] = llm_results
         verified = [
             item for item in llm_results
