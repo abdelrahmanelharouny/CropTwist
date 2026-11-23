@@ -48,3 +48,10 @@ References:
 - https://www.fao.org/contact-us/terms/db-terms-of-use/en
 - https://www.fao.org/hih-geospatial-platform/faqs/
 - https://worldcereal.github.io/worldcereal-documentation/rdm/explore.html
+
+
+## First live run (2026-11-23)
+
+Workflow: [Egypt reference data discovery run #1](https://github.com/abdelrahmanelharouny/CropTwist/actions/runs/45157390222). The public RDM API returned zero public collections and zero Egypt/locality matches. All eight Africa archives for 2018–2025 were downloaded successfully, size/checksum validated, and scanned; 63 archive members were enumerated and no Egypt/locality text matches were found. The report and downloaded archive bundle are retained in artifact ID `14808543228` until 2026-12-23.
+
+This is a bounded negative discovery result, not proof that no Egyptian features are embedded in any geometry or unindexed field. Review actual data attributes and spatial coverage before closing the source. No WorldCereal Egypt collection is approved for training from this run.
