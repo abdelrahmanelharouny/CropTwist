@@ -1,16 +1,16 @@
 # CropTwist Project Control
 
-**Snapshot:** 2026-11-22 (UTC+02:00)  
+**Snapshot:** 2026-11-23 (UTC+02:00)  
 **Repository:** [abdelrahmanelharouny/CropTwist](https://github.com/abdelrahmanelharouny/CropTwist)  
 **Default branch:** `main`  
-**Current integration baseline:** `d519c381e923f73df15acdb99872fdfc9a701a04` (current main after M3/M4/M5–M7/P2/P3/UI-UX safety merges)
+**Current integration baseline:** `4dd44dae19b54c68eb7963976701f3822545dfd5` (current main after M3/M4/M5–M7/P2/P3/UI-UX safety merges)
 
 This file is the current coordination index. Historical reports dated 2026-11-14 and earlier are useful audit evidence, not the current release status. Always distinguish source implementation, CI, live integration, scientific validation and production acceptance.
 
 ## Current status
 
-- **M1 Data & AI:** M1-A through M1-D foundations are integrated. M1-E local Qwen/Ollama is now merged in PR [#24](https://github.com/abdelrahmanelharouny/CropTwist/pull/24) after both backend/PostGIS and frontend CI jobs passed. Ollama remains disabled by default. Numerical parity, multilingual retrieval benchmark, live FAO/WaPOR reads and live provider checks remain evidence gates.
-- **M2 Clean-room Release:** PR #37 is the current-main candidate. Frontend production build and desktop/Arabic RTL browser journey passed; the two-database PostGIS migration/idempotency/schema-parity and full backend/E2E job is still running on exact head `579a008`. PR #28 is stale and should be closed only after PR #37 passes.
+- **M1 Data & AI:** PR [#43](https://github.com/abdelrahmanelharouny/CropTwist/pull/43) and [#46](https://github.com/abdelrahmanelharouny/CropTwist/pull/46) are merged on current main. OpenRouter → Groq is the active provider order; Gemini is deferred; Ollama is disabled. NASA HLS, CDSE Sentinel-2 protected windows and WaPOR Egypt COG reads have live evidence. Scientific gates remain open: upstream Presto parity, provider-backed 12-month S1/S2/ERA5/SRTM ingestion, Egyptian label/license clearance, actual spatial/temporal classifier results and a human-reviewed bilingual E5 benchmark.
+- **M2 Clean-room Release:** PR [#37](https://github.com/abdelrahmanelharouny/CropTwist/pull/37) merged. Exact-head CI, two-empty-PostGIS-database migration/idempotency/schema-parity, backend/E2E and clean frontend production build plus authenticated desktop English/mobile Arabic-RTL browser journeys passed on `017f53e5`.
 - **M3 GIS/Satellite:** PR #32 merged a missing-CRS guard and acceptance notes. Live HLS/Sentinel asset reads, Fmask propagation, projected-CRS field-window correctness, quality-mask coverage and durable job lifecycle still require verification.
 - **M4 Knowledge/Evidence:** PR #29 merged stratified Arabic/English retrieval evaluation. E5 is `intfloat/multilingual-e5-small` (384-D), with `query:`/`passage:` prefixes; reviewed relevance judgments, live retrieval evidence, citation checks and agronomist review remain.
 - **M5–M7 Agricultural Intelligence:** PR #33 merged the M7.8 execution guard. Engines and scenarios exist; optimizer, water/soil arithmetic, scenario evidence and digital-twin integrity need consolidated scientific validation. M7.8 remains blocked until a real forecast/projection provider and method are approved.
@@ -24,7 +24,7 @@ These are isolated work packages. A branch is not considered complete until impl
 
 | Workstream | Branch | Scope |
 |---|---|---|
-| M2 | `work/m2-clean-room-release-current-main` | Clean-room build, migration repeatability, full suites, browser journeys (refreshed from current main) |
+| M1 scientific closure | `work/m1-scientific-closure-2026-11-23` | Presto upstream parity harness, monthly source contract, Egyptian data/license audit, reviewed E5 corpus protocol |\n| M2 | `work/m2-clean-room-release-current-main` | Clean-room build, migration repeatability, full suites, browser journeys (refreshed from current main) |
 | M3 | `work/m3-gis-satellite-reliability` | HLS/Sentinel processing, CRS, masks, raster windows, job reliability |
 | M4 | `work/m4-knowledge-evidence` | Versioned knowledge, E5/RAG evaluation, Arabic/English evidence |
 | M5–M7 | `work/m5-m7-agricultural-intelligence` | Optimizer, water/soil science, scenarios, sensitivity, digital twin |
