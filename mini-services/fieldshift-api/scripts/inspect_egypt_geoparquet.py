@@ -77,15 +77,19 @@ def _profile_geoparquet(data: bytes, collection_id: str, member_name: str) -> di
     attributes = {name: vals for name, vals in values.items() if name not in excluded}
     label_candidates = [
         name for name in attributes
-        if name.lower() in {"ct", "crop", "crop_type", "crop_type_code", "cropclass", "crop_class"}
+        if name.lower() in {"ct", "lc", "crop", "crop_type", "crop_type_code", "cropclass", "crop_class", "crotype", "landcover", "land_cover", "ewoc_code"}
     ]
     id_candidates = [
         name for name in attributes
-        if name.lower() in {"sampleid", "field_id", "fieldid", "block_id", "parcel_id", "farm_id"}
+        if name.lower() in {"sampleid", "sample_id", "field_id", "fieldid", "block_id", "parcel_id", "farm_id", "h3_l3_cell", "h3_best_res_cell"}
     ]
     temporal_candidates = [
         name for name in attributes
         if any(token in name.lower() for token in ("date", "validity", "time", "year", "month"))
+    ]
+    quality_candidates = [
+        name for name in attributes
+        if "quality_score" in name.lower()
     ]
 
     return {
@@ -106,6 +110,7 @@ def _profile_geoparquet(data: bytes, collection_id: str, member_name: str) -> di
         "label_distributions": {name: _counts(attributes[name]) for name in label_candidates},
         "identifier_uniqueness": {name: _counts(attributes[name]) for name in id_candidates},
         "temporal_fields": {name: _counts(attributes[name], limit=30) for name in temporal_candidates},
+        "quality_score_distributions": {name: _counts(attributes[name], limit=30) for name in quality_candidates},
         "null_counts": {
             name: sum(value is None for value in vals)
             for name, vals in attributes.items()
