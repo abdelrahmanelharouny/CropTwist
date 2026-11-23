@@ -45,32 +45,47 @@ def _walk_dicts(value: Any):
 
 
 def _matching_records(payload: Any) -> list[dict[str, Any]]:
+    """Return collection-level hits without duplicating nested properties.
+
+    WorldCereal RDM responses may wrap collections in FeatureCollection,
+    collections, or a direct list. Recursively searching every nested dict
+    duplicates a single collection when its properties also contain an ID.
+    """
+    if isinstance(payload, list):
+        candidates = payload
+    elif isinstance(payload, dict):
+        candidates = None
+        for key in ("features", "collections", "items", "results"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                candidates = value
+                break
+        if candidates is None:
+            candidates = [payload]
+    else:
+        candidates = []
+
     hits: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for item in _walk_dicts(payload):
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
         serialized = _json_text(item)
         matched = [term for term in SEARCH_TERMS if term in serialized]
         if not matched:
             continue
-        # Prefer objects that actually identify a collection or resource.
-        if not any(key in item for key in ("id", "collection", "collection_id")):
-            continue
-        # APIs may expose the same collection both as a feature and as a
-        # nested record. De-duplicate by stable collection identity first,
-        # then by canonical payload for records without an identifier.
         identity = item.get("id") or item.get("collection_id")
         if identity is None:
             collection = item.get("collection")
             identity = collection if isinstance(collection, (str, int)) else None
-        fingerprint = str(identity) if identity is not None else hashlib.sha256(
-            serialized.encode("utf-8")
-        ).hexdigest()
+        if identity is None:
+            identity = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        fingerprint = str(identity)
         if fingerprint in seen:
             continue
         seen.add(fingerprint)
         hits.append({"matched_terms": matched, "record": item})
     return hits
-
 
 def _read_shared_strings(archive: zipfile.ZipFile) -> list[str]:
     try:
